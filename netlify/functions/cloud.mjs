@@ -4,6 +4,10 @@
 //   POST {action:"putdoc", doc, pass}              Mac 出完稿放上站点「新稿」区，不用发布、不花额度
 //   GET  ?task=<id>   一次任务的分步进度        GET ?tasks   最近 10 次任务
 //   GET  ?list        站上「新稿」区的稿子      GET ?doc=<BV> 一篇全文
+//   POST {action:"deltask", id, pass}             删一条任务记录
+//   POST {action:"deldoc"|"undeldoc", id, pass}   删 / 撤销删一篇文稿：只记一个删除标记，网页立刻隐藏；
+//                                                  Mac 下次发布时把本机那份挪进 回收站/，站上那页随之消失。
+//   GET  ?deleted     已删文稿的编号                   重新转写或同步同一篇，会自动撤销删除标记
 // 稿子存 Blobs「zhuanxie-cloud」的 doc/<BV>；Mac 下次 publish.py 时收进 文稿/，随静态站发布。
 import { store, secrets, checkPass, Bili, json, chars, docHead, PRICE, MAX_SEC,
          newTask, Tracker, TASK_ID, pruneTasks } from "../lib/cloud.mjs";
@@ -19,6 +23,10 @@ export default async (req, context) => {
       const { blobs } = await st.list({ prefix: "doc/" });
       const docs = (await Promise.all(blobs.map((b) => st.get(b.key, { type: "json" })))).filter(Boolean).map(docHead);
       return json({ docs: docs.sort((a, b) => b.created - a.created) });
+    }
+    if (u.searchParams.has("deleted")) {
+      const { blobs } = await st.list({ prefix: "deleted/" });
+      return json({ ids: blobs.map((b) => b.key.slice(8)) });
     }
     if (u.searchParams.has("tasks")) {
       const { blobs } = await st.list({ prefix: "task/" });
@@ -47,6 +55,19 @@ export default async (req, context) => {
   if (ok === "locked") return json({ error: "locked", msg: "口令错太多次，一小时后再试" }, 429);
   if (ok !== "ok") return json({ error: "bad_pass", msg: "口令不对" }, 401);
 
+  // ── 编辑：删除 ──
+  if (body.action === "deltask") {
+    if (!TASK_ID.test(body.id)) return json({ error: "bad_id" }, 400);
+    await st.delete(`task/${body.id}`);
+    return json({ ok: true });
+  }
+  if (body.action === "deldoc" || body.action === "undeldoc") {
+    if (!BV.test(body.id)) return json({ error: "bad_id" }, 400);
+    if (body.action === "deldoc") await st.setJSON(`deleted/${body.id}`, { t: Date.now(), title: String(body.title || "").slice(0, 200) });
+    else await st.delete(`deleted/${body.id}`);
+    return json({ ok: true });
+  }
+
   // ── Mac 热键上报 ──
   if (body.action === "task") {
     const t = body.task;
@@ -59,6 +80,7 @@ export default async (req, context) => {
     const d = body.doc;
     if (!d || !BV.test(d.bvid) || typeof d.text !== "string" || d.text.length > 3e6) return json({ error: "bad_doc" }, 400);
     await st.setJSON(`doc/${d.bvid}`, { ...d, from: "mac", created: Date.now() });
+    await st.delete(`deleted/${d.bvid}`);                     // 重新同步 = 撤销删除
     return json({ ok: true });
   }
 
@@ -88,6 +110,7 @@ export default async (req, context) => {
       await tr.enter("save");
       const text = r.paras.join("\n\n");
       await st.setJSON(`doc/${m.bvid}`, { ...m, mode: "T", source: `${r.lan}（云端）`, text, chars: chars(text), created: Date.now() });
+      await st.delete(`deleted/${m.bvid}`);
       await tr.done({ chars: chars(text) });
       await pruneTasks(st);
       return json({ ok: true, task: tr.task.id });

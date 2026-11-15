@@ -24,6 +24,7 @@ export default async (req) => {
     const { text, extra } = utterText(utts);
     await st.setJSON(`doc/${task.bvid}`, { ...task.meta, mode: "Y", source: "豆包volc.seedasr.auc（云端）", text,
                                            chars: chars(text), ...extra, created: Date.now() });
+    await st.delete(`deleted/${task.bvid}`);
     await tr.done({ chars: chars(text) });
   } catch (e) {
     await tr.fail(e);

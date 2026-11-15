@@ -104,6 +104,10 @@ td:first-child,th:first-child{white-space:nowrap;color:var(--dim);width:1%}
 .cb:disabled{opacity:.45;cursor:default}
 p.en{margin:0 0 .35rem;font-size:.95rem;line-height:1.75}
 p.zh{margin:0 0 1.35rem;color:var(--dim)}
+.ed{margin-top:2.4rem;border-top:1px solid var(--line);padding-top:.8rem}
+.ed summary{color:var(--dim);font-size:.85rem;cursor:pointer}
+.ed .bar{margin:.7rem 0 .3rem}
+#gone{border-color:var(--accent)}
 """
 
 WJS = """
@@ -283,6 +287,9 @@ HELP = """<h1>说明</h1>
 <p>云端精修没有热词表、也不做双源核对，标「云端精修·未核」；要紧的稿子还是回 Mac 走精修。</p>
 <p><b>新 UP 主的第一条别直接走精修</b>——热词表在识别那一刻生效，没有表等于白花钱。先配好 <code>tables/hot/&lt;UP主&gt;.json</code> 再跑。</p>
 
+<h3>删掉不要的</h3>
+<p>每篇文稿、每条任务的页面底部都有「编辑」。删任务记录立刻生效；删文稿网页上立刻隐藏、可以撤销，Mac 下次发布时把本机那份挪进回收站，站上那页随之消失。要云端口令。</p>
+
 <h3>精修也不是没有错</h3>
 <p>交叉核对能抓两套系统<b>不一致</b>的地方，抓不到<b>两套同时错</b>的——两边把同一个人名听成同一个错字时，比对结果是「一致」。所以「已核」是指该做的都做了，不是保证零错。正文里保留了原视频 ID，随时能回去对照。</p>
 
@@ -356,8 +363,10 @@ def build():
               'nm.className="rnum"+(n>=FAVN?" on":"");}'
               'paint();open1(BV);pull().then(paint);'
               'el.onclick=()=>{bump(BV,1);paint();};</script>')
+        edit = (f'<script>{EDIT_JS}\ninitDocEdit({json.dumps(d["bv"])},'
+                f'{json.dumps(d["title"], ensure_ascii=False)});</script>').replace('</', '<\\/').replace('<\\/script>', '</script>')
         (SITE / 'd' / f'{d["bv"].lower()}.html').write_text(
-            shell(d['title'], head + body_html(d['text']), n, js), encoding='utf-8')
+            shell(d['title'], GONE + head + body_html(d['text']) + DOC_EDIT, n, js + edit), encoding='utf-8')
 
     # ── 首页 ──
     recent = sorted(docs, key=lambda d: (d['add'], d['pub']), reverse=True)[:5]
@@ -413,6 +422,8 @@ function bindW(){{
  document.querySelectorAll('[data-w]').forEach(e=>{{
   const o=W[e.dataset.w]||{{}};e.style.width=(wOf(o)*100)+'%';}});}}
 lload();paintAll();pull().then(paintAll);
+{EDIT_JS}
+const _bw=bindW;bindW=function(){{_bw();hideDel()}};loadDel().then(hideDel);
 {CLOUD_JS}
 {SEARCH_JS}</script>'''
     (SITE / 'index.html').write_text(shell('转写库', inner, nav(), home_js), encoding='utf-8')
@@ -475,6 +486,8 @@ function bindW(){{
 const h=new URLSearchParams(location.hash.slice(1));
 if(h.get('up'))fu.value=h.get('up');
 lload();render();pull().then(render);
+{EDIT_JS}
+const _bw=bindW;bindW=function(){{_bw();hideDel()}};loadDel().then(hideDel);
 {SEARCH_JS}</script>'''
     (SITE / 'all.html').write_text(shell('全部文稿', inner2, nav('all.html'), all_js),
                                    encoding='utf-8')
@@ -486,11 +499,13 @@ lload();render();pull().then(render);
 
     # ── 任务页：t.html?id=…，一次转写走到哪一步、成没成、卡在哪、怎么办 ──
     (SITE / 't.html').write_text(
-        shell('转写任务', '<div id="task"><div class="empty">载入中…</div></div>', nav(), T_JS), encoding='utf-8')
+        shell('转写任务', '<div id="task"><div class="empty">载入中…</div></div>' + TASK_EDIT, nav(),
+              f'<script>{EDIT_JS}</script>' + T_JS), encoding='utf-8')
 
     # ── 云端文稿阅读页：c.html?bv=BV…，正文从 /api/cloud 现取 ──
     (SITE / 'c.html').write_text(
-        shell('云端文稿', '<div id="doc"><div class="empty">载入中…</div></div>', nav(), C_JS),
+        shell('云端文稿', GONE + '<div id="doc"><div class="empty">载入中…</div></div>' + DOC_EDIT, nav(),
+              f'<script>{EDIT_JS}</script>' + C_JS),
         encoding='utf-8')
 
     # ── 搜索索引与杂项 ──
@@ -543,10 +558,40 @@ async function runSearch(){const k=q.value.trim();
   if(hits.length){n++;out.push('<a class="card" href="/d/'+d.b+'.html"><b>'+esc(d.n)+'</b>'+
    hits.map(h=>'<div class="hit">…'+h+'…</div>').join('')+'</a>');}}
  r.innerHTML='<div class="sec">命中 '+n+' 篇</div>'+
-   (out.join('')||'<div class="empty">没找到</div>');}
+   (out.join('')||'<div class="empty">没找到</div>');if(typeof hideDel==='function')hideDel();}
 let stm;q.addEventListener('input',()=>{clearTimeout(stm);stm=setTimeout(runSearch,180)});
 '''
 
+
+EDIT_JS = r"""
+const CPK='zx-cloud-pass';
+function epass(){let p='';try{p=localStorage.getItem(CPK)||''}catch(e){}return p||prompt('云端口令（装机时生成的那串，每台设备输一次）')||''}
+async function eapi(body){const pass=epass();if(!pass)return null;let j={};
+ try{const r=await fetch('/api/cloud',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(Object.assign({},body,{pass}))});j=await r.json()}catch(e){j={error:'net',msg:'网络不通'}}
+ if(j.error==='bad_pass'){try{localStorage.removeItem(CPK)}catch(e){}alert('口令不对');return null}
+ if(j.error){alert('没成功：'+(j.msg||j.error));return null}
+ try{localStorage.setItem(CPK,pass)}catch(e){}return j}
+let DEL=new Set();
+async function loadDel(){try{const j=await (await fetch('/api/cloud?deleted&_='+Date.now())).json();
+ DEL=new Set((j.ids||[]).map(x=>x.toLowerCase()))}catch(e){}return DEL}
+function hideDel(){if(!DEL.size)return;document.querySelectorAll('a[href]').forEach(a=>{
+ const m=(a.getAttribute('href')||'').match(/^\/(?:d\/([\w-]+)\.html|c\.html\?bv=([\w-]+))/);
+ if(m&&DEL.has((m[1]||m[2]).toLowerCase()))(a.closest('.card')||a).style.display='none'})}
+async function initDocEdit(id,title){
+ const g=document.getElementById('gone'),b=document.getElementById('edDel');if(!g||!b)return;
+ function paint(del){g.style.display=del?'':'none';b.textContent=del?'已删除':'删除这篇';b.disabled=del;
+  g.innerHTML=del?'<b>这篇已删除</b><span class="meta">网页上已经隐藏，Mac 下次发布时从网站移除，本机那份挪进回收站。</span>'+
+   '<div class="bar" style="margin:.6rem 0 0"><button class="cb" id="edUndo">撤销删除</button></div>':'';
+  const u=document.getElementById('edUndo');if(u)u.onclick=async()=>{if(await eapi({action:'undeldoc',id}))paint(false)}}
+ await loadDel();paint(DEL.has(id.toLowerCase()));
+ b.onclick=async()=>{if(!confirm('删除《'+title+'》？\n网页上立刻隐藏，可以撤销。'))return;if(await eapi({action:'deldoc',id,title}))paint(true)}}
+"""
+
+GONE = '<div id="gone" class="card" style="display:none"></div>'
+DOC_EDIT = ('<details class="ed"><summary>编辑</summary><div class="bar"><button class="cb" id="edDel">删除这篇</button></div>'
+            '<div class="meta">删除后网页上立刻看不到，可以撤销；Mac 下次发布时把本机那份挪进回收站。</div></details>')
+TASK_EDIT = ('<details class="ed"><summary>编辑</summary><div class="bar"><button class="cb" id="edDelT">删除这条任务记录</button></div>'
+             '<div class="meta">只删这条记录，不动文稿。</div></details>')
 
 CLOUD_JS = r"""
 const CP='zx-cloud-pass';
@@ -589,7 +634,7 @@ async function loadCloud(){
   document.getElementById('cloud').innerHTML=v.length?'<h2>新稿<span class="n">还没正式发布，下次发布时并入</span></h2>'+
    v.map(d=>'<a class="card" href="/c.html?bv='+d.bvid+'"><b>'+esc(d.title)+'</b><span class="meta">'+esc(d.up)+
    ' · '+esc(d.pub)+(d.dur?' · '+Math.max(1,Math.round(d.dur/60))+' 分':'')+' · '+d.chars+' 字<span class="tag">'+ctag(d)+
-   '</span></span></a>').join(''):'';
+   '</span></span></a>').join(''):'';hideDel();
  }catch(e){}}
 function hm(t){const d=new Date(t),p=n=>String(n).padStart(2,'0');return p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())}
 async function loadTasks(){
@@ -640,6 +685,8 @@ async function load(){
  if(t.status==='running')setTimeout(load,2500);
 }
 load();
+document.getElementById('edDelT').onclick=async()=>{if(!confirm('删除这条任务记录？（不动文稿）'))return;
+ if(await eapi({action:'deltask',id:ID}))location.href='/'};
 </script>"""
 
 
@@ -661,6 +708,7 @@ const LG=p=>{const c=(p.match(/[一-鿿]/g)||[]).length;return c>0.3*Math.max(1,
    d.chars+' 字<span class="tag">'+tag+'</span><br>'+link+'</div><hr style="border:0;border-top:1px solid var(--line);margin:1.2rem 0">'+
    ps.map((p,i)=>{const m=p.match(/^\*\*(.+?)\*\*：([\s\S]*)$/);
     return m?'<p class="t"><i>'+E(m[1])+'</i>'+E(m[2])+'</p>':'<p'+(both?' class="'+lg[i]+'"':'')+'>'+E(p)+'</p>'}).join('');
+  initDocEdit(BV,d.title);
  }catch(e){box.innerHTML='<div class="empty">没找到这篇。可能已经并入正式文稿，回首页找。</div>'}})();
 </script>"""
 
