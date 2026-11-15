@@ -99,6 +99,9 @@ table{width:100%;border-collapse:collapse;font-size:.88rem;margin:0 0 1.2rem}
 th,td{text-align:left;padding:.45rem .5rem;border-bottom:1px solid var(--line);vertical-align:top}
 th{color:var(--dim);font-weight:500;font-size:.8rem}
 td:first-child,th:first-child{white-space:nowrap;color:var(--dim);width:1%}
+.cb{flex:1;padding:.55rem .6rem;font-size:.95rem;border:1px solid var(--line);border-radius:9px;
+ background:var(--card);color:var(--fg);cursor:pointer}
+.cb:disabled{opacity:.45;cursor:default}
 """
 
 WJS = """
@@ -208,6 +211,30 @@ def card(d, sub=''):
 
 
 HELP = """<h1>说明</h1>
+<div class="meta">仓库：<a href="https://github.com/bobsybrashin/bili-transcribe-crosscheck">github.com/bobsybrashin/bili-transcribe-crosscheck</a></div>
+
+<h2>0 · 一步到位</h2>
+<p>设计思路：<b>人只做机器做不了的事，其余全交给脚本。</b>机器做不了的只有三样——给出仓库地址、点授权、填 API Key。所以整套东西只有两步，第二步就是验收。</p>
+<table>
+<tr><th></th><th>你做什么</th><th>脚本做什么</th></tr>
+<tr><td>第 1 步</td><td>在 Mac 终端粘贴一行（仓库 README 第一段就是）：<br><code>zsh -c "$(curl -fsSL https://raw.githubusercontent.com/bobsybrashin/bili-transcribe-crosscheck/main/install.sh)"</code><br>答 3 个问题：① 仓库地址 ② 授权（Netlify 授权页点 Authorize、钥匙串点「始终允许」）③ 豆包 API Key</td><td>装工具、拉仓库、还原站上已有文稿、取 B站 登录态、对好站点密钥、放好云端密钥、绑快捷键，最后真跑一遍 T、Y 两条链路自检</td></tr>
+<tr><td>第 2 步</td><td>复制 B站 链接，按 <kbd>⌃⌘T</kbd> 免费 或 <kbd>⌃⌘Y</kbd> 精修</td><td>出稿、弹通知</td></tr>
+<tr><td>备用</td><td>热键不灵、授权出问题、或不在 Mac 前：首页「云端转写」框粘贴链接，点 T 或 Y</td><td>直接在 Netlify 上转；稿子先进首页「云端新稿」，Mac 下次发布时收进正式文稿</td></tr>
+</table>
+<p>脚本可以反复跑：哪里坏了就整条重跑，做过的步骤自动跳过。B站 登录约一个月过期，过期时跑 <code>~/Documents/转写库/setup/refresh-cookie.sh</code>，云端会跟着更新。云端口令装机时生成，每台设备第一次用时输一次。</p>
+
+<h3>限制条件（当下不解决，直接写成前提）</h3>
+<table>
+<tr><td>1</td><td>只支持 macOS；装 Homebrew 时要输开机密码</td></tr>
+<tr><td>2</td><td>Chrome 里要已登录 bilibili.com（登录态约一个月过期，跑 refresh-cookie.sh 续）</td></tr>
+<tr><td>3</td><td>Netlify 账号要拥有 zhuanxieku 站点</td></tr>
+<tr><td>4</td><td>豆包语音要开通「录音文件识别 2.0」，API Key 用新版控制台的</td></tr>
+<tr><td>5</td><td>过程中要人点：Netlify 授权、钥匙串「始终允许」、首次通知权限</td></tr>
+<tr><td>6</td><td>热键在 Electron 类应用（如 Claude 桌面版）里不生效，在 Chrome、访达里按</td></tr>
+<tr><td>7</td><td>免费路线要视频自带中文字幕</td></tr>
+<tr><td>8</td><td>云端精修单条 ≤ 2 小时，没有热词表和双源核对</td></tr>
+<tr><td>9</td><td>Netlify 免费额度 300/月硬上限，每次部署 15；出稿不花，发布才花</td></tr>
+</table>
 
 <h2>1 · 两条出稿路线</h2>
 <table>
@@ -239,7 +266,8 @@ HELP = """<h1>说明</h1>
 <h2>3 · 其他</h2>
 
 <h3>怎么加新稿子</h3>
-<p>在 Mac 上<b>复制视频链接 → 按快捷键</b>，出稿后弹通知。快捷键怎么绑见仓库 README。</p>
+<p>在 Mac 上<b>复制视频链接 → 按 <kbd>⌃⌘T</kbd> / <kbd>⌃⌘Y</kbd></b>，出稿后弹通知。不在 Mac 前就用首页「云端转写」，手机也能用。</p>
+<p>云端精修没有热词表、也不做双源核对，标「云端精修·未核」；要紧的稿子还是回 Mac 走精修。</p>
 <p><b>新 UP 主的第一条别直接走精修</b>——热词表在识别那一刻生效，没有表等于白花钱。先配好 <code>tables/hot/&lt;UP主&gt;.json</code> 再跑。</p>
 
 <h3>精修也不是没有错</h3>
@@ -260,6 +288,11 @@ SYNC_RO = ('构建时没有设 <code>SITE_WRITE_KEY</code>，所以这是个<b>�
 
 
 def build():
+    try:                                    # 网页备用入口（云端）出的稿，先收进 文稿/ 再构建
+        import cloud_pull
+        cloud_pull.pull(ROOT)
+    except Exception as e:
+        print(f'  · 云端文稿没拉到（不影响构建）：{str(e)[:80]}')
     if SITE.exists():
         shutil.rmtree(SITE)
     (SITE / 'd').mkdir(parents=True)
@@ -321,6 +354,11 @@ def build():
              f'{sum(int(d["chars"] or 0) for d in docs):,} 字</div>'
              f'<input id="q" placeholder="全文搜索…" autocomplete="off">'
              f'<div id="r"></div><div id="home">'
+             f'<div class="sec">☁ 云端转写 · 备用（Mac 热键不灵时用）</div>'
+             f'<input id="cu" placeholder="粘贴 B站 视频链接" autocomplete="off">'
+             f'<div class="bar"><button class="cb" data-m="T">T 免费</button>'
+             f'<button class="cb" data-m="Y">Y 精修</button></div>'
+             f'<div id="cs" class="hit"></div><div id="cloud"></div>'
              f'<h2>★ 我的收藏<span class="n">权重 ≥ 0.2</span></h2>'
              f'<div id="fav"><div class="empty">还没有。点两次星（权重到 0.2）就会出现在这里。</div></div>'
              f'<h2>最近添加</h2>{recent_html}'
@@ -355,6 +393,7 @@ function bindW(){{
  document.querySelectorAll('[data-w]').forEach(e=>{{
   const o=W[e.dataset.w]||{{}};e.style.width=(wOf(o)*100)+'%';}});}}
 lload();paintAll();pull().then(paintAll);
+{CLOUD_JS}
 {SEARCH_JS}</script>'''
     (SITE / 'index.html').write_text(shell('转写库', inner, nav(), home_js), encoding='utf-8')
 
@@ -424,6 +463,11 @@ lload();render();pull().then(render);
         shell('说明', HELP.replace('{SYNC}', SYNC_RW if key else SYNC_RO), nav('help.html')),
         encoding='utf-8')
 
+    # ── 云端文稿阅读页：c.html?bv=BV…，正文从 /api/cloud 现取 ──
+    (SITE / 'c.html').write_text(
+        shell('云端文稿', '<div id="doc"><div class="empty">载入中…</div></div>', nav(), C_JS),
+        encoding='utf-8')
+
     # ── 搜索索引与杂项 ──
     (SITE / 'search.json').write_text(json.dumps(
         [{'b': d['bv'].lower(), 'n': d['title'],
@@ -477,6 +521,75 @@ async function runSearch(){const k=q.value.trim();
    (out.join('')||'<div class="empty">没找到</div>');}
 let stm;q.addEventListener('input',()=>{clearTimeout(stm);stm=setTimeout(runSearch,180)});
 '''
+
+
+CLOUD_JS = r"""
+const CP='zx-cloud-pass';
+function cget(){try{return localStorage.getItem(CP)||''}catch(e){return ''}}
+function cset(p){try{p?localStorage.setItem(CP,p):localStorage.removeItem(CP)}catch(e){}}
+async function capi(b){const r=await fetch('/api/cloud',{method:'POST',
+ headers:{'content-type':'application/json'},body:JSON.stringify(b)});
+ try{return await r.json()}catch(e){return {error:'http_'+r.status,msg:'服务出错（'+r.status+'）'}}}
+function csay(h){document.getElementById('cs').innerHTML=h}
+function cbtn(d){document.querySelectorAll('.cb').forEach(b=>b.disabled=d)}
+function cdone(j){csay('✓ 已出稿：<a href="/c.html?bv='+j.bvid+'">'+esc(j.title)+'</a>'+
+ (j.note?'（'+esc(j.note)+'）':''));loadCloud();}
+async function cgo(mode){
+ const url=document.getElementById('cu').value.trim();
+ if(!/bilibili\.com|b23\.tv|bili2233\.cn|BV[0-9A-Za-z]{10}/.test(url)){csay('先粘贴 B站 视频链接');return}
+ const pass=cget()||prompt('云端转写口令（装机时生成的那串，每台设备输一次）')||'';
+ if(!pass)return;
+ cbtn(true);
+ try{
+  csay('解析中…');
+  let j=await capi({url,mode:'info',pass});
+  if(j.error==='bad_pass'){cset('');csay('口令不对，再点一次重新输入');return}
+  if(j.error){csay(esc(j.msg||j.error));return}
+  cset(pass);
+  const m=j.meta;
+  if(mode==='Y'&&!confirm('《'+m.title+'》\n'+m.up+' · '+Math.max(1,Math.round(m.dur/60))+' 分钟\n精修约 '+j.cost+' 元，确定？')){csay('');return}
+  csay('《'+esc(m.title)+'》'+(mode==='T'?'取字幕中…':'提交中…'));
+  j=await capi({url,mode,pass});
+  if(j.error){csay(esc(j.msg||j.error));return}
+  if(j.done){cdone(j);return}
+  for(let i=1;i<=320;i++){
+   await new Promise(r=>setTimeout(r,3000));
+   let s={};try{s=await (await fetch('/api/cloud?job='+encodeURIComponent(j.job)+'&_='+Date.now())).json()}catch(e){}
+   if(s.status==='done'){cdone(j);return}
+   if(s.status==='error'){csay('失败：'+esc(s.msg));return}
+   csay('《'+esc(j.title)+'》'+esc(s.msg||'排队中')+' · '+i*3+' 秒');}
+  csay('还在跑，过一会儿刷新页面看「云端新稿」');
+ }catch(e){csay('出错：'+esc(String(e)))}finally{cbtn(false)}
+}
+document.querySelectorAll('.cb').forEach(b=>b.onclick=()=>cgo(b.dataset.m));
+async function loadCloud(){
+ try{const j=await (await fetch('/api/cloud?list&_='+Date.now())).json();
+  const have=new Set(ALL.map(d=>d.b));
+  const v=(j.docs||[]).filter(d=>!have.has(d.bvid.toLowerCase()));
+  document.getElementById('cloud').innerHTML=v.length?'<h2>☁ 云端新稿<span class="n">Mac 下次发布时收进文稿</span></h2>'+
+   v.map(d=>'<a class="card" href="/c.html?bv='+d.bvid+'"><b>'+esc(d.title)+'</b><span class="meta">'+esc(d.up)+
+   ' · '+esc(d.pub)+' · '+Math.max(1,Math.round(d.dur/60))+' 分 · '+d.chars+' 字<span class="tag">'+
+   (d.mode==='Y'?'云端精修':'云端快车道')+'</span></span></a>').join(''):'';
+ }catch(e){}}
+loadCloud();
+"""
+
+C_JS = r"""<script>
+const BV=new URLSearchParams(location.search).get('bv')||'';
+const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const DUR=s=>s>=3600?Math.floor(s/3600)+'h'+Math.floor(s%3600/60)+'m':Math.floor(s/60)+'m'+(s%60)+'s';
+(async()=>{const box=document.getElementById('doc');
+ if(!/^BV[0-9A-Za-z]{10}$/.test(BV)){box.innerHTML='<div class="empty">链接不对</div>';return}
+ try{const r=await fetch('/api/cloud?doc='+BV+'&_='+Date.now());if(!r.ok)throw new Error(r.status);
+  const d=await r.json();document.title=d.title;
+  const tag=d.mode==='Y'?'云端精修·未核':'云端快车道·可能有缺失';
+  box.innerHTML='<h1>'+E(d.title)+'</h1><div class="meta">'+E(d.up)+' · '+E(d.pub)+' · '+DUR(d.dur)+' · '+
+   d.chars+' 字<span class="tag">'+tag+'</span><br><a href="https://www.bilibili.com/video/'+BV+
+   '/">在 B站 打开原视频</a></div><hr style="border:0;border-top:1px solid var(--line);margin:1.2rem 0">'+
+   d.text.split('\n\n').map(p=>{const m=p.match(/^\*\*(.+?)\*\*：([\s\S]*)$/);
+    return m?'<p class="t"><i>'+E(m[1])+'</i>'+E(m[2])+'</p>':'<p>'+E(p)+'</p>'}).join('');
+ }catch(e){box.innerHTML='<div class="empty">没找到这篇。可能已经并入正式文稿，回首页找。</div>'}})();
+</script>"""
 
 
 def deploy():

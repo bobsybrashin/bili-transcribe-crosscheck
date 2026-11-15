@@ -1,0 +1,36 @@
+# 全新 Mac 安装测试：每次推送，GitHub 借一台临时 macOS 虚拟机，跑 README 里那一行安装命令，跑完虚拟机即销毁。
+# 不配任何凭据也能跑：验证「全新机器 → 一行命令 → 装好、还原文稿、构建站点、云端入口在线」。
+# 想连 T、Y 两条出稿链路一起验，在仓库 Settings → Secrets and variables → Actions 里加：
+#   VOLC_SPEECH_API_KEY   豆包 API Key
+#   BILI_COOKIE_JSON      ~/.config/transcribe/bilibili-cookie.json 的全文
+#   NETLIFY_AUTH_TOKEN    Netlify 个人访问令牌（只用来关联站点，不部署）
+# 人点的弹窗（Netlify 授权、钥匙串、通知权限）和快捷键绑定，虚拟机里测不了，只能在真机上验。
+name: 全新 Mac 安装测试
+
+on:
+  push:
+    branches: [main, one-step]
+  workflow_dispatch:
+
+jobs:
+  install:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: 一行命令安装（无人值守）
+        env:
+          ZX_REPO: https://github.com/${{ github.repository }}.git
+          ZX_BRANCH: ${{ github.ref_name }}
+          ZX_ROOT: ${{ runner.temp }}/转写库
+          VOLC_SPEECH_API_KEY: ${{ secrets.VOLC_SPEECH_API_KEY }}
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          BILI_COOKIE_JSON: ${{ secrets.BILI_COOKIE_JSON }}
+          YTDLP_COOKIES_FROM_BROWSER: ""      # 虚拟机里没有 Chrome 登录态，下游客码率即可
+        run: |
+          if [ -n "$BILI_COOKIE_JSON" ]; then
+            printf '%s' "$BILI_COOKIE_JSON" > "$RUNNER_TEMP/bili.json"
+            export ZX_BILI_COOKIE="$RUNNER_TEMP/bili.json"
+          fi
+          zsh -c "$(curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.sh)" install.sh --ci
+      - name: 构建站点
+        run: cd "$RUNNER_TEMP/转写库" && python3 src/publish.py
