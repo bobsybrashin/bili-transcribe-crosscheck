@@ -218,7 +218,7 @@ HELP = """<h1>说明</h1>
 <table>
 <tr><th></th><th>你做什么</th><th>脚本做什么</th></tr>
 <tr><td>第 1 步</td><td>在 Mac 终端粘贴一行（仓库 README 第一段就是）：<br><code>zsh -c "$(curl -fsSL https://raw.githubusercontent.com/bobsybrashin/bili-transcribe-crosscheck/main/install.sh)"</code><br>答 3 个问题：① 仓库地址 ② 授权（Netlify 授权页点 Authorize、钥匙串点「始终允许」）③ 豆包 API Key</td><td>装工具、拉仓库、还原站上已有文稿、取 B站 登录态、对好站点密钥、放好云端密钥、绑快捷键，最后真跑一遍 T、Y 两条链路自检</td></tr>
-<tr><td>第 2 步</td><td>复制 B站 链接，按 <kbd>⌃⌘T</kbd> 免费 或 <kbd>⌃⌘Y</kbd> 精修</td><td>出稿、弹通知</td></tr>
+<tr><td>第 2 步</td><td>复制 B站 链接，按 <kbd>⌃⌘T</kbd> 免费 或 <kbd>⌃⌘Y</kbd> 精修</td><td>出稿，放上首页「新稿」区（不发布、不花额度），弹通知并打开任务页：成功写字数、花费、待核项；失败写卡在哪一步、原因、怎么办</td></tr>
 <tr><td>备用</td><td>热键不灵、授权出问题、或不在 Mac 前：首页「云端转写」框粘贴链接，点 T 或 Y</td><td>直接在 Netlify 上转；稿子先进首页「云端新稿」，Mac 下次发布时收进正式文稿</td></tr>
 </table>
 <p>脚本可以反复跑：哪里坏了就整条重跑，做过的步骤自动跳过。B站 登录约一个月过期，过期时跑 <code>~/Documents/转写库/setup/refresh-cookie.sh</code>，云端会跟着更新。云端口令装机时生成，每台设备第一次用时输一次。</p>
@@ -358,7 +358,7 @@ def build():
              f'<input id="cu" placeholder="粘贴 B站 视频链接" autocomplete="off">'
              f'<div class="bar"><button class="cb" data-m="T">T 免费</button>'
              f'<button class="cb" data-m="Y">Y 精修</button></div>'
-             f'<div id="cs" class="hit"></div><div id="cloud"></div>'
+             f'<div id="cs" class="hit"></div><div id="tasks"></div><div id="cloud"></div>'
              f'<h2>★ 我的收藏<span class="n">权重 ≥ 0.2</span></h2>'
              f'<div id="fav"><div class="empty">还没有。点两次星（权重到 0.2）就会出现在这里。</div></div>'
              f'<h2>最近添加</h2>{recent_html}'
@@ -463,6 +463,10 @@ lload();render();pull().then(render);
         shell('说明', HELP.replace('{SYNC}', SYNC_RW if key else SYNC_RO), nav('help.html')),
         encoding='utf-8')
 
+    # ── 任务页：t.html?id=…，一次转写走到哪一步、成没成、卡在哪、怎么办 ──
+    (SITE / 't.html').write_text(
+        shell('转写任务', '<div id="task"><div class="empty">载入中…</div></div>', nav(), T_JS), encoding='utf-8')
+
     # ── 云端文稿阅读页：c.html?bv=BV…，正文从 /api/cloud 现取 ──
     (SITE / 'c.html').write_text(
         shell('云端文稿', '<div id="doc"><div class="empty">载入中…</div></div>', nav(), C_JS),
@@ -532,8 +536,6 @@ async function capi(b){const r=await fetch('/api/cloud',{method:'POST',
  try{return await r.json()}catch(e){return {error:'http_'+r.status,msg:'服务出错（'+r.status+'）'}}}
 function csay(h){document.getElementById('cs').innerHTML=h}
 function cbtn(d){document.querySelectorAll('.cb').forEach(b=>b.disabled=d)}
-function cdone(j){csay('✓ 已出稿：<a href="/c.html?bv='+j.bvid+'">'+esc(j.title)+'</a>'+
- (j.note?'（'+esc(j.note)+'）':''));loadCloud();}
 async function cgo(mode){
  const url=document.getElementById('cu').value.trim();
  if(!/bilibili\.com|b23\.tv|bili2233\.cn|BV[0-9A-Za-z]{10}/.test(url)){csay('先粘贴 B站 视频链接');return}
@@ -541,38 +543,84 @@ async function cgo(mode){
  if(!pass)return;
  cbtn(true);
  try{
-  csay('解析中…');
-  let j=await capi({url,mode:'info',pass});
+  if(mode==='Y'){
+   csay('解析中…');
+   const j=await capi({url,mode:'info',pass});
+   if(j.error==='bad_pass'){cset('');csay('口令不对，再点一次重新输入');return}
+   if(j.error){csay(esc(j.msg||j.error));return}
+   cset(pass);
+   const m=j.meta;
+   if(!confirm('《'+m.title+'》\n'+m.up+' · '+Math.max(1,Math.round(m.dur/60))+' 分钟\n精修约 '+j.cost+' 元，确定？')){csay('');return}
+  }
+  csay('提交中…');
+  const j=await capi({url,mode,pass});
   if(j.error==='bad_pass'){cset('');csay('口令不对，再点一次重新输入');return}
-  if(j.error){csay(esc(j.msg||j.error));return}
-  cset(pass);
-  const m=j.meta;
-  if(mode==='Y'&&!confirm('《'+m.title+'》\n'+m.up+' · '+Math.max(1,Math.round(m.dur/60))+' 分钟\n精修约 '+j.cost+' 元，确定？')){csay('');return}
-  csay('《'+esc(m.title)+'》'+(mode==='T'?'取字幕中…':'提交中…'));
-  j=await capi({url,mode,pass});
-  if(j.error){csay(esc(j.msg||j.error));return}
-  if(j.done){cdone(j);return}
-  for(let i=1;i<=320;i++){
-   await new Promise(r=>setTimeout(r,3000));
-   let s={};try{s=await (await fetch('/api/cloud?job='+encodeURIComponent(j.job)+'&_='+Date.now())).json()}catch(e){}
-   if(s.status==='done'){cdone(j);return}
-   if(s.status==='error'){csay('失败：'+esc(s.msg));return}
-   csay('《'+esc(j.title)+'》'+esc(s.msg||'排队中')+' · '+i*3+' 秒');}
-  csay('还在跑，过一会儿刷新页面看「云端新稿」');
+  if(j.task){cset(pass);location.href='/t.html?id='+encodeURIComponent(j.task);return}
+  csay(esc(j.msg||j.error||'出错了'));
  }catch(e){csay('出错：'+esc(String(e)))}finally{cbtn(false)}
 }
 document.querySelectorAll('.cb').forEach(b=>b.onclick=()=>cgo(b.dataset.m));
+function ctag(d){return (d.from==='mac'?'本机':'云端')+(d.mode==='Y'?'精修':'快车道')}
 async function loadCloud(){
  try{const j=await (await fetch('/api/cloud?list&_='+Date.now())).json();
   const have=new Set(ALL.map(d=>d.b));
   const v=(j.docs||[]).filter(d=>!have.has(d.bvid.toLowerCase()));
-  document.getElementById('cloud').innerHTML=v.length?'<h2>☁ 云端新稿<span class="n">Mac 下次发布时收进文稿</span></h2>'+
+  document.getElementById('cloud').innerHTML=v.length?'<h2>新稿<span class="n">还没正式发布，下次发布时并入</span></h2>'+
    v.map(d=>'<a class="card" href="/c.html?bv='+d.bvid+'"><b>'+esc(d.title)+'</b><span class="meta">'+esc(d.up)+
-   ' · '+esc(d.pub)+' · '+Math.max(1,Math.round(d.dur/60))+' 分 · '+d.chars+' 字<span class="tag">'+
-   (d.mode==='Y'?'云端精修':'云端快车道')+'</span></span></a>').join(''):'';
+   ' · '+esc(d.pub)+' · '+Math.max(1,Math.round(d.dur/60))+' 分 · '+d.chars+' 字<span class="tag">'+ctag(d)+
+   '</span></span></a>').join(''):'';
  }catch(e){}}
-loadCloud();
+function hm(t){const d=new Date(t),p=n=>String(n).padStart(2,'0');return p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())}
+async function loadTasks(){
+ try{const j=await (await fetch('/api/cloud?tasks&_='+Date.now())).json();
+  const v=(j.tasks||[]).slice(0,5);if(!v.length)return;
+  const ic={done:'✓',error:'✗',running:'⏳'};
+  document.getElementById('tasks').innerHTML='<div class="sec">最近任务</div>'+v.map(t=>{
+   const bad=(t.steps||[]).find(s=>s.s==='fail');
+   const tail=t.status==='error'?'<div class="meta" style="color:var(--accent)">卡在「'+esc(bad?bad.name:'')+'」：'+esc(t.reason||'')+'</div>':'';
+   return '<a class="card" href="/t.html?id='+encodeURIComponent(t.id)+'"><span class="meta">'+ic[t.status]+' '+hm(t.t0)+' · '+
+    (t.src==='mac'?'Mac 热键':'网页云端')+' · '+t.mode+'</span><b>'+esc(t.title||t.url||'')+'</b>'+tail+'</a>'}).join('');
+ }catch(e){}}
+loadCloud();loadTasks();
 """
+
+T_JS = r"""<script>
+const ID=new URLSearchParams(location.search).get('id')||'';
+const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const IC={ok:'✓',fail:'✗',run:'⏳',skip:'–',wait:'·'};
+const sec=ms=>ms==null?'':(ms<1000?'<1 秒':Math.round(ms/1000)+' 秒');
+let readHref=null;
+async function href(bv){if(readHref)return readHref;
+ try{const r=await fetch('/d/'+bv.toLowerCase()+'.html',{method:'HEAD'});readHref=r.ok?'/d/'+bv.toLowerCase()+'.html':'/c.html?bv='+bv}
+ catch(e){readHref='/c.html?bv='+bv}return readHref}
+async function load(){
+ const box=document.getElementById('task');
+ if(!/^[\w-]{6,60}$/.test(ID)){box.innerHTML='<div class="empty">任务号不对</div>';return}
+ let t;try{const r=await fetch('/api/cloud?task='+ID+'&_='+Date.now());if(!r.ok)throw 0;t=await r.json()}
+ catch(e){box.innerHTML='<div class="empty">找不到这个任务</div>';return}
+ const st={done:'✓ '+(t.outcome||'已出稿'),error:'✗ 没成功',running:'⏳ 进行中'}[t.status];
+ const used=Math.round(((t.status==='running'?Date.now():t.t)-t.t0)/1000);
+ let h='<h1>'+st+'</h1><div class="meta">'+E(t.title||t.url)+'<br>'+(t.src==='mac'?'Mac 热键':'网页云端')+' · '+
+  (t.mode==='Y'?'Y 精修':'T 免费')+' · '+new Date(t.t0).toLocaleString('zh-CN',{hour12:false})+' · 用时 '+used+' 秒</div>';
+ if(t.status==='error'){
+  const bad=(t.steps||[]).find(s=>s.s==='fail');
+  h+='<div class="card" style="border-color:var(--accent)"><b>卡在「'+E(bad?bad.name:'')+'」</b>'+
+   '<p style="margin:.4rem 0 .2rem"><b>原因：</b>'+E(t.reason)+'</p><p style="margin:0"><b>怎么办：</b>'+E(t.fix)+'</p></div>';
+ }
+ if(t.status==='done'){
+  const bits=[t.chars?t.chars+' 字':'',t.cost?'花费约 '+t.cost+' 元':'',t.unresolved?'待核 '+t.unresolved+' 项':'',t.note||''].filter(Boolean);
+  h+='<div class="card">'+(t.bvid?'<a href="'+(await href(t.bvid))+'"><b>阅读全文 →</b></a>':'')+
+   (bits.length?'<span class="meta">'+E(bits.join(' · '))+'</span>':'')+'</div>';
+ }
+ h+='<table>'+(t.steps||[]).map(s=>'<tr><td>'+IC[s.s]+'</td><td>'+E(s.name)+'</td><td>'+
+  E(s.note||'')+'</td><td>'+(s.s==='run'?'进行中':sec(s.ms))+'</td></tr>').join('')+'</table>';
+ if(t.msg&&t.status==='error')h+='<details><summary class="meta">技术细节</summary><pre style="white-space:pre-wrap;font-size:.75rem">'+E(t.msg)+'</pre></details>';
+ box.innerHTML=h;
+ if(t.status==='running')setTimeout(load,2500);
+}
+load();
+</script>"""
+
 
 C_JS = r"""<script>
 const BV=new URLSearchParams(location.search).get('bv')||'';
@@ -582,7 +630,7 @@ const DUR=s=>s>=3600?Math.floor(s/3600)+'h'+Math.floor(s%3600/60)+'m':Math.floor
  if(!/^BV[0-9A-Za-z]{10}$/.test(BV)){box.innerHTML='<div class="empty">链接不对</div>';return}
  try{const r=await fetch('/api/cloud?doc='+BV+'&_='+Date.now());if(!r.ok)throw new Error(r.status);
   const d=await r.json();document.title=d.title;
-  const tag=d.mode==='Y'?'云端精修·未核':'云端快车道·可能有缺失';
+  const tag=(d.from==='mac'?'本机':'云端')+(d.mode==='Y'?'精修':'快车道·可能有缺失')+(d.from!=='mac'&&d.mode==='Y'?'·未核':'')+'·未发布';
   box.innerHTML='<h1>'+E(d.title)+'</h1><div class="meta">'+E(d.up)+' · '+E(d.pub)+' · '+DUR(d.dur)+' · '+
    d.chars+' 字<span class="tag">'+tag+'</span><br><a href="https://www.bilibili.com/video/'+BV+
    '/">在 B站 打开原视频</a></div><hr style="border:0;border-top:1px solid var(--line);margin:1.2rem 0">'+

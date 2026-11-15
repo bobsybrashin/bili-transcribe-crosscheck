@@ -215,4 +215,73 @@ export function utterText(utts) {
 }
 
 export const chars = (text) => text.replace(/\*\*[^*]+\*\*：/g, "").replace(/\s/g, "").length;
-export const docHead = (d) => ({ bvid: d.bvid, title: d.title, up: d.up, pub: d.pub, dur: d.dur, chars: d.chars, mode: d.mode, created: d.created });
+export const docHead = (d) => ({ bvid: d.bvid, title: d.title, up: d.up, pub: d.pub, dur: d.dur, chars: d.chars, mode: d.mode, from: d.from || "cloud", created: d.created });
+
+// ── 任务记录：每次转写（网页云端、Mac 热键）都留一份，分步记 ✓/✗/耗时，失败时写清原因和怎么办 ──
+// 存 task/<id>；首页「最近任务」和任务页 t.html 读它。
+export const STEPS = {
+  T: [["link", "读链接"], ["meta", "解析视频"], ["sub", "取字幕"], ["save", "存稿"]],
+  Y: [["link", "读链接"], ["meta", "解析视频"], ["audio", "下载音频"], ["asr", "豆包识别"], ["save", "存稿"]],
+};
+export const TASK_ID = /^[\w-]{6,60}$/;
+
+export function newTask(src, mode, url) {
+  return { id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, src, mode,
+           url: String(url || "").slice(0, 300), status: "running", t0: Date.now(), t: Date.now(),
+           steps: STEPS[mode].map(([k, name]) => ({ k, name, s: "wait" })) };
+}
+
+// 失败原因 → 白话原因 + 一句怎么办（Mac 端 src/task.py 里有同一张表的 Python 版）
+export function explain(msg) {
+  const m = String(msg || "");
+  const rules = [
+    [/没有中文字幕|no_sub/, "这条视频没有中文字幕，免费模式出不了稿", "改用 Y 精修"],
+    [/登录已过期|need_login/i, "B站 登录过期", "在 Mac 上跑 ~/Documents/转写库/setup/refresh-cookie.sh"],
+    [/412|风控/, "B站 风控拦截了这次请求", "过几分钟再试"],
+    [/豆包 4|豆包 5|X-Api|API Key/i, "豆包拒绝了请求（Key 无效、没开通或余额不足）", "去火山引擎控制台看 API Key 和余额"],
+    [/超过 2 小时|too_long/, "视频超过 2 小时，云端转不了", "回 Mac 按 ⌃⌘Y"],
+    [/音频太大/, "音频太大，云端处理不了", "回 Mac 按 ⌃⌘Y"],
+    [/音频下载失败|取不到音频/, "音频下载失败", "再试一次；还不行回 Mac 按 ⌃⌘Y"],
+    [/没认出|番剧/, "没认出 B站 视频链接", "复制视频页地址再试（番剧、合集请用 Mac）"],
+    [/没配密钥|not_configured/, "云端还没配密钥", "在 Mac 上跑 ~/Documents/转写库/setup/cloud-secrets.sh"],
+    [/timeout|timed out|fetch failed|ETIMEDOUT|ECONNRESET|network/i, "网络不通或超时", "再试一次（做完的步骤会复用，不重复扣费）"],
+  ];
+  for (const [re, r, f] of rules) if (re.test(m)) return [r, f];
+  return ["没预料到的错误：" + m.slice(0, 80), "再试一次；还不行把这一页截图发给 Claude"];
+}
+
+export class Tracker {
+  constructor(st, task) { this.st = st; this.task = task; }
+  async save() { this.task.t = Date.now(); await this.st.setJSON(`task/${this.task.id}`, this.task); }
+  #close() {
+    for (const s of this.task.steps) if (s.s === "run") { s.s = "ok"; s.ms = Date.now() - s.t0; }
+  }
+  async enter(k, note) {
+    this.#close();
+    const s = this.task.steps.find((x) => x.k === k);
+    if (s) { s.s = "run"; s.t0 = Date.now(); if (note) s.note = note; }
+    await this.save();
+  }
+  async note(k, note) { const s = this.task.steps.find((x) => x.k === k); if (s) s.note = note; await this.save(); }
+  async done(extra = {}) {
+    this.#close();
+    for (const s of this.task.steps) if (s.s === "wait") s.s = "skip";
+    Object.assign(this.task, extra, { status: "done" });
+    await this.save();
+  }
+  async fail(err) {
+    const s = this.task.steps.find((x) => x.s === "run") || this.task.steps.find((x) => x.s === "wait");
+    if (s) { s.s = "fail"; if (s.t0) s.ms = Date.now() - s.t0; }
+    const [reason, fix] = explain(err?.message || err);
+    Object.assign(this.task, { status: "error", reason, fix, msg: String(err?.message || err).slice(0, 300) });
+    await this.save();
+  }
+}
+
+// 只留最近 60 条任务
+export async function pruneTasks(st) {
+  const { blobs } = await st.list({ prefix: "task/" });
+  if (blobs.length <= 60) return;
+  const all = (await Promise.all(blobs.map((b) => st.get(b.key, { type: "json" })))).filter(Boolean).sort((a, b) => a.t - b.t);
+  await Promise.all(all.slice(0, all.length - 60).map((t) => st.delete(`task/${t.id}`)));
+}

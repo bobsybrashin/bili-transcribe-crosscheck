@@ -19,39 +19,21 @@ notify() {  # $1=标题 $2=正文
 }
 
 URL="$(pbpaste | tr -d '\n' | head -c 500)"
-case "$URL" in
-  *bilibili.com*|*b23.tv*) ;;
-  *) notify "剪贴板里不是 B站 链接" "先复制视频链接再按热键"; exit 1 ;;
-esac
+[ "$MODE" = "fine" ] && M=Y || M=T
+notify "开始（$M）" "$(echo "$URL" | head -c 60)"
 
-[ "$MODE" = "fine" ] && FLAG="--fine" || FLAG="--fast"
-notify "开始（${MODE}）" "$(echo "$URL" | head -c 60)"
-
+# 一次转写 = 一个任务：task.py 分步记录、出稿后放上网站「新稿」区（不发布、不花额度），
+# 结束时弹通知并打开任务页——成功写标题/花费/待核项，失败写卡在哪一步、原因、怎么办。
+# 剪贴板不是 B站 链接也交给它，同样给出任务页。
 {
   echo "── $(date '+%F %T')  mode=$MODE  $URL"
-  OUT="$("$ROOT/src/ts.py" "$URL" $FLAG 2>&1)"
+  "$ROOT/src/task.py" "$M" "$URL" 2>&1
   CODE=$?
-  echo "$OUT"
 } >> "$LOG" 2>&1
+[ "$CODE" -ne 0 ] && exit "$CODE"
 
-TITLE="$(printf '%s\n' "$OUT" | grep -m1 '^《' | tr -d '《》')"
-if [ "$CODE" -ne 0 ]; then
-  case "$CODE" in
-    2) notify "没有中文字幕轨" "这条只能走精修" ;;
-    3) notify "已有精修版" "快车道不覆盖它" ;;
-    *) notify "失败（码 $CODE）" "看 .work/hotkey.log" ;;
-  esac
-  exit "$CODE"
-fi
-
-# 不在这里部署——发布有额度，每转一条推一次会烧穿。攒着，改完/转完再一次推。
-PEND=$("$ROOT/src/publish.py" >/dev/null 2>&1; "$ROOT/src/doctor.py" 2>/dev/null \
-       | grep -o "[0-9]* 篇文稿站上没有" | grep -o "^[0-9]*")
-if [ -n "$PEND" ] && [ "$PEND" -gt 0 ] 2>/dev/null; then
-  notify "已出稿 · 待发布 $PEND 篇" "${TITLE:-完成} · 跑 src/publish.py --deploy 推上去"
-else
-  notify "已出稿" "${TITLE:-完成}"
-fi
+# 本机站点照旧重建（doctor 对账用）。不在这里部署——发布有额度，攒着一次推。
+"$ROOT/src/publish.py" >/dev/null 2>&1
 
 # 收尾对账：有残留就提醒，不让失败悄悄堆积
 LEFT="$("$ROOT/src/doctor.py" --quiet 2>/dev/null)"
