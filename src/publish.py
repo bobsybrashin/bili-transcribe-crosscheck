@@ -102,6 +102,8 @@ td:first-child,th:first-child{white-space:nowrap;color:var(--dim);width:1%}
 .cb{flex:1;padding:.55rem .6rem;font-size:.95rem;border:1px solid var(--line);border-radius:9px;
  background:var(--card);color:var(--fg);cursor:pointer}
 .cb:disabled{opacity:.45;cursor:default}
+p.en{margin:0 0 .35rem;font-size:.95rem;line-height:1.75}
+p.zh{margin:0 0 1.35rem;color:var(--dim)}
 """
 
 WJS = """
@@ -168,15 +170,23 @@ def added_map(bvs):
     return d
 
 
+def lang(para):
+    """段落是中文还是英文：汉字占比过三成算中文"""
+    cjk = len(re.findall(r'[\u4e00-\u9fff]', para))
+    return 'zh' if cjk > 0.3 * max(1, len(re.sub(r'\s', '', para))) else 'en'
+
+
 def body_html(text):
+    paras = [x.strip() for x in text.split('\n\n') if x.strip()]
+    langs = [lang(x) for x in paras]
+    both = 'en' in langs and 'zh' in langs          # 中英对照：两种语言都有
     out = []
-    for para in text.split('\n\n'):
-        para = para.strip()
-        if not para:
-            continue
+    for para, lg in zip(paras, langs):
         sp = re.match(r'\*\*(.+?)\*\*：(.*)', para, re.S)
-        out.append(f'<p class="t"><i>{E(sp.group(1))}</i>{E(sp.group(2))}</p>' if sp
-                   else f'<p>{E(para)}</p>')
+        if sp:
+            out.append(f'<p class="t"><i>{E(sp.group(1))}</i>{E(sp.group(2))}</p>')
+        else:
+            out.append(f'<p class="{lg}">{E(para)}</p>' if both else f'<p>{E(para)}</p>')
     return '\n'.join(out)
 
 
@@ -200,10 +210,11 @@ def nav(here=''):
 
 def card(d, sub=''):
     fine = '豆包' in d['src']
-    tag = '' if fine else '<span class="tag">快车道</span>'
+    tag = ('<span class="tag">整理稿</span>' if d['manual'] else
+           '' if fine else '<span class="tag">快车道</span>')
     bv = d['bv'].lower()
     return (f'<div class="card"><a href="/d/{bv}.html"><b>{E(d["title"])}</b>'
-            f'<span class="meta">{E(d["up"])} · {E(d["pub"])} · {E(d["dur"])} · '
+            f'<span class="meta">{E(d["up"])} · {E(d["pub"])}{" · " + E(d["dur"]) if d["dur"] else ""} · '
             f'{E(d["chars"])} 字{tag}{sub}</span></a>'
             f'<div class="foot"><span class="wbar"><i data-w="{bv}"></i></span>'
             f'<span class="wt"><span class="num" data-n="{bv}"></span>'
@@ -219,6 +230,7 @@ HELP = """<h1>说明</h1>
 <tr><th></th><th>你做什么</th><th>脚本做什么</th></tr>
 <tr><td>第 1 步</td><td>在 Mac 终端粘贴一行（仓库 README 第一段就是）：<br><code>zsh -c "$(curl -fsSL https://raw.githubusercontent.com/bobsybrashin/bili-transcribe-crosscheck/main/install.sh)"</code><br>答 3 个问题：① 仓库地址 ② 授权（Netlify 授权页点 Authorize、钥匙串点「始终允许」）③ 豆包 API Key</td><td>装工具、拉仓库、还原站上已有文稿、取 B站 登录态、对好站点密钥、放好云端密钥、绑快捷键，最后真跑一遍 T、Y 两条链路自检</td></tr>
 <tr><td>第 2 步</td><td>复制 B站 链接，按 <kbd>⌃⌘T</kbd> 免费 或 <kbd>⌃⌘Y</kbd> 精修</td><td>出稿，放上首页「新稿」区（不发布、不花额度），弹通知并打开任务页：成功写字数、花费、待核项；失败写卡在哪一步、原因、怎么办</td></tr>
+<tr><td>整理稿</td><td>不在 B站 的视频、英文材料、自己整理的文字：存成 .md / .txt，在访达里选中按 <kbd>⌃⌘U</kbd>（英文一段、中文一段交替就是中英对照）</td><td>收进文稿，放上首页「新稿」区，弹通知并打开任务页</td></tr>
 <tr><td>备用</td><td>热键不灵、授权出问题、或不在 Mac 前：首页「云端转写」框粘贴链接，点 T 或 Y</td><td>直接在 Netlify 上转；稿子先进首页「云端新稿」，Mac 下次发布时收进正式文稿</td></tr>
 </table>
 <p>脚本可以反复跑：哪里坏了就整条重跑，做过的步骤自动跳过。B站 登录约一个月过期，过期时跑 <code>~/Documents/转写库/setup/refresh-cookie.sh</code>，云端会跟着更新。云端口令装机时生成，每台设备第一次用时输一次。</p>
@@ -234,6 +246,7 @@ HELP = """<h1>说明</h1>
 <tr><td>7</td><td>免费路线要视频自带中文字幕</td></tr>
 <tr><td>8</td><td>云端精修单条 ≤ 2 小时，没有热词表和双源核对</td></tr>
 <tr><td>9</td><td>Netlify 免费额度 300/月硬上限，每次部署 15；出稿不花，发布才花</td></tr>
+<tr><td>10</td><td>整理稿只收 .md / .txt；⌃⌘U 只在访达里有效</td></tr>
 </table>
 
 <h2>1 · 两条出稿路线</h2>
@@ -302,7 +315,8 @@ def build():
         if not r:
             continue
         fm, text = r
-        docs.append({'bv': fm.get('bvid') or p.stem, 'title': fm.get('title', p.stem),
+        docs.append({'bv': fm.get('bvid') or fm.get('id') or p.stem, 'title': fm.get('title', p.stem),
+                     'manual': not fm.get('bvid'), 'url': fm.get('url', ''), 'note': fm.get('note', ''),
                      'up': fm.get('up', '未知'), 'pub': fm.get('published', ''),
                      'dur': fm.get('duration', ''), 'chars': fm.get('chars', ''),
                      'src': fm.get('source', ''), 'unresolved': fm.get('unresolved', ''),
@@ -321,10 +335,15 @@ def build():
     # ── 阅读页 ──
     for d in docs:
         fine = '豆包' in d['src']
-        tag = '' if fine else '<span class="tag">快车道·可能有缺失</span>'
+        if d['manual']:
+            tag = '<span class="tag">整理稿</span>'
+            link = (f'<a href="{E(d["url"])}">打开原文</a>' if d['url'] else '') + \
+                   (f'<br>{E(d["note"])}' if d['note'] else '') + f'<br>{E(d["src"])}'
+        else:
+            tag = '' if fine else '<span class="tag">快车道·可能有缺失</span>'
+            link = f'<a href="https://www.bilibili.com/video/{d["bv"]}/">在 B站 打开原视频</a>'
         head = (f'<h1>{E(d["title"])}</h1><div class="meta">{E(d["up"])} · {E(d["pub"])}'
-                f' · {E(d["dur"])} · {E(d["chars"])} 字{tag}<br>'
-                f'<a href="https://www.bilibili.com/video/{d["bv"]}/">在 B站 打开原视频</a>'
+                f'{" · " + E(d["dur"]) if d["dur"] else ""} · {E(d["chars"])} 字{tag}<br>{link}'
                 f'</div><hr style="border:0;border-top:1px solid var(--line);margin:1.2rem 0">')
         n = ('<a href="/">首页</a> · <a href="/all.html">全部</a><span class="sp"></span>'
              f'<span class="num rnum"></span>'
@@ -364,12 +383,13 @@ def build():
              f'<h2>最近添加</h2>{recent_html}'
              f'<h2>按 UP 主<span class="n">{len(ups)} 位</span></h2>{uplist}</div>')
     allcards = json.dumps([{'b': d['bv'].lower(), 'n': d['title'], 'u': d['up'], 'p': d['pub'],
-                            'd': d['dur'], 'c': d['chars'], 'f': '豆包' in d['src']} for d in docs], ensure_ascii=False)
+                            'd': d['dur'], 'c': d['chars'], 'f': '豆包' in d['src'] or d['manual'],
+                            'm': d['manual']} for d in docs], ensure_ascii=False)
     home_js = f'''<script>{wjs}
 const ALL={allcards};
-function cardHTML(d){{const tag=d.f?'':'<span class="tag">快车道</span>';
+function cardHTML(d){{const tag=d.m?'<span class="tag">整理稿</span>':d.f?'':'<span class="tag">快车道</span>';
  return '<div class="card"><a href="/d/'+d.b+'.html"><b>'+esc(d.n)+'</b><span class="meta">'+
-  esc(d.u)+' · '+esc(d.p)+' · '+esc(d.d)+' · '+esc(d.c)+' 字'+tag+
+  esc(d.u)+' · '+esc(d.p)+(d.d?' · '+esc(d.d):'')+' · '+esc(d.c)+' 字'+tag+
   '</span></a><div class="foot"><span class="wbar"><i data-w="'+d.b+'"></i></span>'+
   '<span class="wt"><span class="num" data-n="'+d.b+'"></span>'+
   '<span class="star" data-bv="'+d.b+'">★</span></span></div></div>';}}
@@ -406,6 +426,7 @@ lload();paintAll();pull().then(paintAll);
            + ''.join(f'<option>{m}</option>' for m in months) + '</select>'
            f'<select id="fq"><option value="">全部质量</option>'
            f'<option value="fine">只看精修</option><option value="fast">只看快车道</option>'
+           f'<option value="manual">只看整理稿</option>'
            f'</select></div>')
     inner2 = (f'<h1>全部文稿</h1><div class="meta" id="cnt">{len(docs)} 篇</div>'
               f'<input id="q" placeholder="全文搜索…" autocomplete="off">'
@@ -413,9 +434,9 @@ lload();paintAll();pull().then(paintAll);
     all_js = f'''<script>{wjs}
 const ALL={allcards};
 function esc(s){{return String(s||'').replace(/[&<>]/g,c=>({{'&':'&amp;','<':'&lt;','>':'&gt;'}}[c]))}}
-function cardHTML(d){{const tag=d.f?'':'<span class="tag">快车道</span>';
+function cardHTML(d){{const tag=d.m?'<span class="tag">整理稿</span>':d.f?'':'<span class="tag">快车道</span>';
  return '<div class="card"><a href="/d/'+d.b+'.html"><b>'+esc(d.n)+'</b><span class="meta">'+
-  esc(d.u)+' · '+esc(d.p)+' · '+esc(d.d)+' · '+esc(d.c)+' 字'+tag+
+  esc(d.u)+' · '+esc(d.p)+(d.d?' · '+esc(d.d):'')+' · '+esc(d.c)+' 字'+tag+
   '</span></a><div class="foot"><span class="wbar"><i data-w="'+d.b+'"></i></span>'+
   '<span class="wt"><span class="num" data-n="'+d.b+'"></span>'+
   '<span class="star" data-bv="'+d.b+'">★</span>'+
@@ -426,7 +447,7 @@ const fu=document.getElementById('fu'),fm=document.getElementById('fm'),
       CN=document.getElementById('cnt');
 function render(){{
  let v=ALL.filter(d=>(!fu.value||d.u===fu.value)&&(!fm.value||(d.p||'').startsWith(fm.value))
-   &&(!fq.value||(fq.value==='fine'?d.f:!d.f)));
+   &&(!fq.value||(fq.value==='manual'?d.m:fq.value==='fine'?(d.f&&!d.m):!d.f)));
  v.sort((a,b)=>(b.p||'').localeCompare(a.p||''));
  CN.textContent=v.length+' 篇 · '+v.reduce((s,d)=>s+(+d.c||0),0).toLocaleString()+' 字';
  let out='',cur='';
@@ -560,14 +581,14 @@ async function cgo(mode){
  }catch(e){csay('出错：'+esc(String(e)))}finally{cbtn(false)}
 }
 document.querySelectorAll('.cb').forEach(b=>b.onclick=()=>cgo(b.dataset.m));
-function ctag(d){return (d.from==='mac'?'本机':'云端')+(d.mode==='Y'?'精修':'快车道')}
+function ctag(d){return d.mode==='M'?'整理稿':(d.from==='mac'?'本机':'云端')+(d.mode==='Y'?'精修':'快车道')}
 async function loadCloud(){
  try{const j=await (await fetch('/api/cloud?list&_='+Date.now())).json();
   const have=new Set(ALL.map(d=>d.b));
   const v=(j.docs||[]).filter(d=>!have.has(d.bvid.toLowerCase()));
   document.getElementById('cloud').innerHTML=v.length?'<h2>新稿<span class="n">还没正式发布，下次发布时并入</span></h2>'+
    v.map(d=>'<a class="card" href="/c.html?bv='+d.bvid+'"><b>'+esc(d.title)+'</b><span class="meta">'+esc(d.up)+
-   ' · '+esc(d.pub)+' · '+Math.max(1,Math.round(d.dur/60))+' 分 · '+d.chars+' 字<span class="tag">'+ctag(d)+
+   ' · '+esc(d.pub)+(d.dur?' · '+Math.max(1,Math.round(d.dur/60))+' 分':'')+' · '+d.chars+' 字<span class="tag">'+ctag(d)+
    '</span></span></a>').join(''):'';
  }catch(e){}}
 function hm(t){const d=new Date(t),p=n=>String(n).padStart(2,'0');return p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())}
@@ -579,7 +600,7 @@ async function loadTasks(){
    const bad=(t.steps||[]).find(s=>s.s==='fail');
    const tail=t.status==='error'?'<div class="meta" style="color:var(--accent)">卡在「'+esc(bad?bad.name:'')+'」：'+esc(t.reason||'')+'</div>':'';
    return '<a class="card" href="/t.html?id='+encodeURIComponent(t.id)+'"><span class="meta">'+ic[t.status]+' '+hm(t.t0)+' · '+
-    (t.src==='mac'?'Mac 热键':'网页云端')+' · '+t.mode+'</span><b>'+esc(t.title||t.url||'')+'</b>'+tail+'</a>'}).join('');
+    (t.src==='mac'?'Mac':'网页云端')+' · '+({Y:'Y 精修',T:'T 免费',U:'整理稿'}[t.mode]||t.mode)+'</span><b>'+esc(t.title||t.url||'')+'</b>'+tail+'</a>'}).join('');
  }catch(e){}}
 loadCloud();loadTasks();
 """
@@ -600,8 +621,8 @@ async function load(){
  catch(e){box.innerHTML='<div class="empty">找不到这个任务</div>';return}
  const st={done:'✓ '+(t.outcome||'已出稿'),error:'✗ 没成功',running:'⏳ 进行中'}[t.status];
  const used=Math.round(((t.status==='running'?Date.now():t.t)-t.t0)/1000);
- let h='<h1>'+st+'</h1><div class="meta">'+E(t.title||t.url)+'<br>'+(t.src==='mac'?'Mac 热键':'网页云端')+' · '+
-  (t.mode==='Y'?'Y 精修':'T 免费')+' · '+new Date(t.t0).toLocaleString('zh-CN',{hour12:false})+' · 用时 '+used+' 秒</div>';
+ let h='<h1>'+st+'</h1><div class="meta">'+E(t.title||t.url)+'<br>'+(t.src==='mac'?'Mac':'网页云端')+' · '+
+  ({Y:'Y 精修',T:'T 免费',U:'整理稿同步'}[t.mode]||t.mode)+' · '+new Date(t.t0).toLocaleString('zh-CN',{hour12:false})+' · 用时 '+used+' 秒</div>';
  if(t.status==='error'){
   const bad=(t.steps||[]).find(s=>s.s==='fail');
   h+='<div class="card" style="border-color:var(--accent)"><b>卡在「'+E(bad?bad.name:'')+'」</b>'+
@@ -626,16 +647,20 @@ C_JS = r"""<script>
 const BV=new URLSearchParams(location.search).get('bv')||'';
 const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const DUR=s=>s>=3600?Math.floor(s/3600)+'h'+Math.floor(s%3600/60)+'m':Math.floor(s/60)+'m'+(s%60)+'s';
+const LG=p=>{const c=(p.match(/[一-鿿]/g)||[]).length;return c>0.3*Math.max(1,p.replace(/\s/g,'').length)?'zh':'en'};
 (async()=>{const box=document.getElementById('doc');
- if(!/^BV[0-9A-Za-z]{10}$/.test(BV)){box.innerHTML='<div class="empty">链接不对</div>';return}
+ if(!/^(BV[0-9A-Za-z]{10}|M\d{8}-[0-9a-f]{4,8})$/.test(BV)){box.innerHTML='<div class="empty">链接不对</div>';return}
  try{const r=await fetch('/api/cloud?doc='+BV+'&_='+Date.now());if(!r.ok)throw new Error(r.status);
   const d=await r.json();document.title=d.title;
-  const tag=(d.from==='mac'?'本机':'云端')+(d.mode==='Y'?'精修':'快车道·可能有缺失')+(d.from!=='mac'&&d.mode==='Y'?'·未核':'')+'·未发布';
-  box.innerHTML='<h1>'+E(d.title)+'</h1><div class="meta">'+E(d.up)+' · '+E(d.pub)+' · '+DUR(d.dur)+' · '+
-   d.chars+' 字<span class="tag">'+tag+'</span><br><a href="https://www.bilibili.com/video/'+BV+
-   '/">在 B站 打开原视频</a></div><hr style="border:0;border-top:1px solid var(--line);margin:1.2rem 0">'+
-   d.text.split('\n\n').map(p=>{const m=p.match(/^\*\*(.+?)\*\*：([\s\S]*)$/);
-    return m?'<p class="t"><i>'+E(m[1])+'</i>'+E(m[2])+'</p>':'<p>'+E(p)+'</p>'}).join('');
+  const man=d.mode==='M';
+  const tag=man?'整理稿·未发布':(d.from==='mac'?'本机':'云端')+(d.mode==='Y'?'精修':'快车道·可能有缺失')+(d.from!=='mac'&&d.mode==='Y'?'·未核':'')+'·未发布';
+  const link=man?(d.url?'<a href="'+E(d.url)+'">打开原文</a>':'')+(d.note?'<br>'+E(d.note):'')+(d.source?'<br>'+E(d.source):'')
+   :'<a href="https://www.bilibili.com/video/'+BV+'/">在 B站 打开原视频</a>';
+  const ps=d.text.split('\n\n').map(p=>p.trim()).filter(Boolean),lg=ps.map(LG),both=lg.includes('en')&&lg.includes('zh');
+  box.innerHTML='<h1>'+E(d.title)+'</h1><div class="meta">'+E(d.up)+' · '+E(d.pub)+(d.dur?' · '+DUR(d.dur):'')+' · '+
+   d.chars+' 字<span class="tag">'+tag+'</span><br>'+link+'</div><hr style="border:0;border-top:1px solid var(--line);margin:1.2rem 0">'+
+   ps.map((p,i)=>{const m=p.match(/^\*\*(.+?)\*\*：([\s\S]*)$/);
+    return m?'<p class="t"><i>'+E(m[1])+'</i>'+E(m[2])+'</p>':'<p'+(both?' class="'+lg[i]+'"':'')+'>'+E(p)+'</p>'}).join('');
  }catch(e){box.innerHTML='<div class="empty">没找到这篇。可能已经并入正式文稿，回首页找。</div>'}})();
 </script>"""
 

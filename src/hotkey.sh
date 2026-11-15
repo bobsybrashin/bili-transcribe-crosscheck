@@ -8,6 +8,8 @@ set -u
 # Service/Dock 启动时 PATH 是精简的，netlify(~/.local/bin)、yt-dlp+ffmpeg(/opt/homebrew/bin)
 # 都不在里面。必须显式补齐，否则出稿成功但发布静默失败。
 export PATH="/opt/homebrew/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+# 服务启动时也没有语言环境：不设的话 pbpaste 会把剪贴板里的中文吐成 ???
+export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 MODE="${1:-fast}"
 # 仓库根目录：优先环境变量，否则按脚本自身位置推（本文件在 <root>/src/ 下）
 ROOT="${TRANSCRIBE_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"

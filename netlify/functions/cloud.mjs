@@ -9,7 +9,7 @@ import { store, secrets, checkPass, Bili, json, chars, docHead, PRICE, MAX_SEC,
          newTask, Tracker, TASK_ID, pruneTasks } from "../lib/cloud.mjs";
 
 export const config = { path: "/api/cloud" };
-const BV = /^BV[0-9A-Za-z]{10}$/;
+const BV = /^(BV[0-9A-Za-z]{10}|M\d{8}-[0-9a-f]{4,8})$/;   // B站 号，或整理稿编号
 
 export default async (req, context) => {
   const u = new URL(req.url), st = store();

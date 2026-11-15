@@ -21,12 +21,14 @@ def pull(root):
     have = {}                                   # bvid → (路径, 是否精修)
     for p in (root / '文稿').rglob('*.md'):
         t = p.read_text(encoding='utf-8')[:800]
-        m = re.search(r'^bvid: (\S+)', t, re.M)
+        m = re.search(r'^(?:bvid|id): (\S+)', t, re.M)
         if m:
             have[m.group(1)] = (p, '豆包' in t)
     n = 0
     for h in _get(f'/api/cloud?list&_={int(time.time())}').get('docs', []):
         bv = h['bvid']
+        if h.get('mode') == 'M':                # 整理稿是本机同步上去的，本机本来就有
+            continue
         old = have.get(bv)
         if old and (old[1] or h['mode'] != 'Y'):
             continue

@@ -129,32 +129,22 @@ else
   ok "豆包 API Key、站点写入密钥、云端转写密钥都已就位"
 fi
 
-step "7/8 快捷键：⌃⌘T 免费 · ⌃⌘Y 精修"
+step "7/8 快捷键：⌃⌘T 免费 · ⌃⌘Y 精修 · ⌃⌘U 同步整理稿"
 if (( TEST )); then
   print "  · 演练模式：跳过（不改真实快捷键）"
 else
-  for name mode key in 转写-免费 fast '@^t' 转写-精修 fine '@^y'; do
-    d=$HOME/Library/Services/$name.workflow/Contents; mkdir -p $d
-    python3 - $S/service.wflow $d $name "nohup \"$ROOT/src/hotkey.sh\" $mode >/dev/null 2>&1 &" <<'PY'
-import sys, plistlib, pathlib, uuid
-tpl, d, name, cmd = sys.argv[1:]
-w = plistlib.loads(pathlib.Path(tpl).read_bytes())
-a = w['actions'][0]['action']
-a['ActionParameters']['COMMAND_STRING'] = cmd          # 立刻返回，转写在后台跑，进度靠通知
-for k in ('InputUUID', 'OutputUUID', 'UUID'):
-    a[k] = str(uuid.uuid4()).upper()
-pathlib.Path(d, 'document.wflow').write_bytes(plistlib.dumps(w))
-# Info.plist 只留这四个键：多写空字段，服务不注册且不报错
-pathlib.Path(d, 'Info.plist').write_bytes(plistlib.dumps({'NSServices': [{
-    'NSBackgroundColorName': 'background', 'NSIconName': 'NSActionTemplate',
-    'NSMenuItem': {'default': name}, 'NSMessage': 'runWorkflowAsService'}]}))
-PY
+  P='export PATH="/opt/homebrew/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"; '
+  python3 $S/mkservice.py $ROOT text 转写-免费 "nohup \"$ROOT/src/hotkey.sh\" fast >/dev/null 2>&1 &" >/dev/null || die "生成服务失败"
+  python3 $S/mkservice.py $ROOT text 转写-精修 "nohup \"$ROOT/src/hotkey.sh\" fine >/dev/null 2>&1 &" >/dev/null || die "生成服务失败"
+  python3 $S/mkservice.py $ROOT files 同步到转写库 "${P}nohup \"$ROOT/src/upload.py\" \"\$@\" >/dev/null 2>&1 &" >/dev/null \
+    || die "生成服务失败"
+  for name key in 转写-免费 '@^t' 转写-精修 '@^y' 同步到转写库 '@^u'; do
     # 键名外面那层双引号不能省：不加的话 (null) 会被当成数组
     defaults write pbs NSServicesStatus -dict-add "\"(null) - $name - runWorkflowAsService\"" "{key_equivalent = \"$key\";}"
   done
   /System/Library/CoreServices/pbs -update
-  (( $(/System/Library/CoreServices/pbs -dump 2>/dev/null | grep -c 'U8f6c\\U5199-') >= 4 )) || die "系统没认到两个服务"
-  ok "两个服务已注册并绑好键"
+  (( $(/System/Library/CoreServices/pbs -dump 2>/dev/null | grep -c 'U8f6c\\U5199-\|U540c\\U6b65\\U5230') >= 5 )) || die "系统没认到这三个服务"
+  ok "三个服务已注册并绑好键（⌃⌘U：在访达里选中整理好的文稿再按，或右键 → 快速操作 → 同步到转写库）"
 fi
 
 step "8/8 自检（真跑 T、Y 两条链路的关键环节，约 30 秒，花费约 0.001 元）"

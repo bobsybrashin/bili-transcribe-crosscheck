@@ -26,7 +26,7 @@ def docs():
     out = {}
     for p in DOCS.rglob('*.md'):
         t = p.read_text(encoding='utf-8')[:600]
-        bv = re.search(r'^bvid: (\S+)', t, re.M)
+        bv = re.search(r'^(?:bvid|id): (\S+)', t, re.M)       # 整理稿没有 B站 号，用 id
         dur = re.search(r'^duration: (?:(\d+)h)?(\d+)m(?:(\d+)s)?', t, re.M)
         if bv:
             s = 0
