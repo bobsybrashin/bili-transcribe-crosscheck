@@ -21,11 +21,14 @@ sys.path.insert(0, str(ROOT / 'src'))
 log = lambda *a: print(*a, flush=True)
 
 
+ALIAS = set()      # 合并进别的文稿的那几期：有文稿、有缓存，但站上没有单独一页
+
+
 def docs():
     """→ {bvid: (path, 时长秒)}"""
     out = {}
     for p in DOCS.rglob('*.md'):
-        t = p.read_text(encoding='utf-8')[:600]
+        t = p.read_text(encoding='utf-8')[:1200]
         bv = re.search(r'^(?:bvid|id): (\S+)', t, re.M)       # 整理稿没有 B站 号，用 id
         dur = re.search(r'^duration: (?:(\d+)h)?(\d+)m(?:(\d+)s)?', t, re.M)
         if bv:
@@ -33,6 +36,11 @@ def docs():
             if dur:
                 s = int(dur.group(1) or 0) * 3600 + int(dur.group(2)) * 60 + int(dur.group(3) or 0)
             out[bv.group(1)] = (p, s)
+            mg = re.search(r'^merged: (\S+)', t, re.M)          # 合并稿：其余几期也算有文稿（缓存不是孤儿）
+            if mg:                                              # 合并稿的总时长不能拿来估单期缓存段数
+                out[bv.group(1)] = (p, 0)
+            for other in (mg.group(1).split(',') if mg else []):
+                out.setdefault(other, (p, 0)); ALIAS.add(other)
     return out
 
 
@@ -53,7 +61,7 @@ def main():
     issues, fixable = [], []
 
     # 1 / 2 文稿 ↔ 站点 对账
-    miss = sorted(bv for bv in D if bv.lower() not in P)
+    miss = sorted(bv for bv in D if bv.lower() not in P and bv not in ALIAS)
     if miss:
         issues.append(('未发布', f'{len(miss)} 篇文稿站上没有', [D[b][0].name for b in miss]))
         fixable.append('publish')

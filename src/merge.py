@@ -51,13 +51,30 @@ def combine(segs, spans, minor_ratio=0.02):
     return out
 
 def name_speakers(rows, hint=None):
-    """用开场白认主持人；hint=(主持人名, 嘉宾名)"""
+    """认主持人和嘉宾；hint=(主持人名, 嘉宾名)。
+    开场有人说「大家好」就是主持人。认不出（比如开头是金句剪辑）时，在说得最多的两人里打分：
+    问句占比高、提到嘉宾名字多、自己的名字被提得少、话少——越像主持人。
+    旧写法认不出时会把两个人都叫成嘉宾，整篇并成一段，所以不能省。"""
     host, guest = hint or ('主持人', '嘉宾')
+    n, q, c, txt = {}, {}, {}, {}
+    for _, s, t in rows:
+        n[s] = n.get(s, 0) + 1; c[s] = c.get(s, 0) + len(t); txt[s] = txt.get(s, '') + t
+        q[s] = q.get(s, 0) + t.rstrip().endswith(('？', '?'))
+    main = sorted(c, key=c.get, reverse=True)[:2]
     m = {}
     for _, s, t in rows[:8]:
-        if '大家好' in t or host in t: m[s] = host; break
-    for _, s, _ in rows:
-        if s not in m and len(m) < 2: m[s] = guest
+        if '大家好' in t:
+            m[s] = host; break
+    if not m and len(main) == 2:
+        tot = sum(c[x] for x in main) or 1
+        def score(s):
+            names = (txt[s].count(guest) - txt[s].count(host)) * 3 if hint else 0
+            return q[s] / n[s] * 100 + names - c[s] / tot * 10
+        m[max(main, key=score)] = host
+    for s in main:
+        m.setdefault(s, guest)
+    for s in c:                              # 第三个及以后的人（零散的已在 combine 里并掉）
+        m.setdefault(s, f'说话人{s}')
     return m
 
 def to_turns(rows, names, fix=()):
