@@ -163,3 +163,4 @@ python3 $S/selfcheck.py $ROOT || die "自检没过"
 
 print "\n✅ 装好了。第 2 步：复制一条 B站 链接 → 按 ⌃⌘T（免费）或 ⌃⌘Y（精修），出稿后弹通知。"
 [[ -s $CFG/cloud-pass ]] && print "   备用：$SITE_URL 首页「云端转写」，口令 $(cat $CFG/cloud-pass)（每台设备输一次）"
+exit 0                                                         # 上一行的判断为假时别把 1 当成退出码
