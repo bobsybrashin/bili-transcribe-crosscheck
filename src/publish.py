@@ -386,10 +386,10 @@ def build():
              f'<input id="cu" placeholder="粘贴 B站 视频链接" autocomplete="off">'
              f'<div class="bar"><button class="cb" data-m="T">T 免费</button>'
              f'<button class="cb" data-m="Y">Y 精修</button></div>'
-             f'<div id="cs" class="hit"></div><div id="tasks"></div><div id="cloud"></div>'
+             f'<div id="cs" class="hit"></div><div id="tasks"></div>'
              f'<h2>★ 我的收藏<span class="n">权重 ≥ 0.2</span></h2>'
              f'<div id="fav"><div class="empty">还没有。点两次星（权重到 0.2）就会出现在这里。</div></div>'
-             f'<h2>最近添加</h2>{recent_html}'
+             f'<h2>最近添加</h2><div id="recent">{recent_html}</div>'
              f'<h2>按 UP 主<span class="n">{len(ups)} 位</span></h2>{uplist}</div>')
     allcards = json.dumps([{'b': d['bv'].lower(), 'n': d['title'], 'u': d['up'], 'p': d['pub'],
                             'd': d['dur'], 'c': d['chars'], 'f': '豆包' in d['src'] or d['manual'],
@@ -397,7 +397,7 @@ def build():
     home_js = f'''<script>{wjs}
 const ALL={allcards};
 function cardHTML(d){{const tag=d.m?'<span class="tag">整理稿</span>':d.f?'':'<span class="tag">快车道</span>';
- return '<div class="card"><a href="/d/'+d.b+'.html"><b>'+esc(d.n)+'</b><span class="meta">'+
+ return '<div class="card"><a href="'+(d.h||'/d/'+d.b+'.html')+'"><b>'+esc(d.n)+'</b><span class="meta">'+
   esc(d.u)+' · '+esc(d.p)+(d.d?' · '+esc(d.d):'')+' · '+esc(d.c)+' 字'+tag+
   '</span></a><div class="foot"><span class="wbar"><i data-w="'+d.b+'"></i></span>'+
   '<span class="wt"><span class="num" data-n="'+d.b+'"></span>'+
@@ -422,6 +422,7 @@ function bindW(){{
  document.querySelectorAll('[data-w]').forEach(e=>{{
   const o=W[e.dataset.w]||{{}};e.style.width=(wOf(o)*100)+'%';}});}}
 lload();paintAll();pull().then(paintAll);
+{NEW_JS}
 {EDIT_JS}
 const _bw=bindW;bindW=function(){{_bw();hideDel()}};loadDel().then(hideDel);
 {CLOUD_JS}
@@ -446,7 +447,7 @@ const _bw=bindW;bindW=function(){{_bw();hideDel()}};loadDel().then(hideDel);
 const ALL={allcards};
 function esc(s){{return String(s||'').replace(/[&<>]/g,c=>({{'&':'&amp;','<':'&lt;','>':'&gt;'}}[c]))}}
 function cardHTML(d){{const tag=d.m?'<span class="tag">整理稿</span>':d.f?'':'<span class="tag">快车道</span>';
- return '<div class="card"><a href="/d/'+d.b+'.html"><b>'+esc(d.n)+'</b><span class="meta">'+
+ return '<div class="card"><a href="'+(d.h||'/d/'+d.b+'.html')+'"><b>'+esc(d.n)+'</b><span class="meta">'+
   esc(d.u)+' · '+esc(d.p)+(d.d?' · '+esc(d.d):'')+' · '+esc(d.c)+' 字'+tag+
   '</span></a><div class="foot"><span class="wbar"><i data-w="'+d.b+'"></i></span>'+
   '<span class="wt"><span class="num" data-n="'+d.b+'"></span>'+
@@ -486,6 +487,8 @@ function bindW(){{
 const h=new URLSearchParams(location.hash.slice(1));
 if(h.get('up'))fu.value=h.get('up');
 lload();render();pull().then(render);
+{NEW_JS}
+loadNew().then(v=>{{if(v.length){{ALL.push(...v);render()}}}});
 {EDIT_JS}
 const _bw=bindW;bindW=function(){{_bw();hideDel()}};loadDel().then(hideDel);
 {SEARCH_JS}</script>'''
@@ -502,10 +505,10 @@ const _bw=bindW;bindW=function(){{_bw();hideDel()}};loadDel().then(hideDel);
         shell('转写任务', '<div id="task"><div class="empty">载入中…</div></div>' + TASK_EDIT, nav(),
               f'<script>{EDIT_JS}</script>' + T_JS), encoding='utf-8')
 
-    # ── 云端文稿阅读页：c.html?bv=BV…，正文从 /api/cloud 现取 ──
+    # ── 新转写的阅读页：c.html?bv=…，正文从 /api/cloud 现取；发布成正式页之前用它，样子和正式页一样 ──
     (SITE / 'c.html').write_text(
-        shell('云端文稿', GONE + '<div id="doc"><div class="empty">载入中…</div></div>' + DOC_EDIT, nav(),
-              f'<script>{EDIT_JS}</script>' + C_JS),
+        shell('文稿', GONE + '<div id="doc"><div class="empty">载入中…</div></div>' + DOC_EDIT, nav(),
+              f'<script>{wjs}\n{EDIT_JS}</script>' + C_JS),
         encoding='utf-8')
 
     # ── 搜索索引与杂项 ──
@@ -545,7 +548,11 @@ const HOME=document.getElementById('home'),LIST=document.getElementById('list');
 let idx=null,busy=false;
 async function loadIdx(){if(idx||busy)return;busy=true;
  r.innerHTML='<div class="hit">载入索引…</div>';
- idx=await (await fetch('/search.json')).json();busy=false;}
+ idx=await (await fetch('/search.json')).json();
+ if(typeof loadNew==='function')for(const d of await loadNew()){
+  try{const x=await (await fetch('/api/cloud?doc='+d.id)).json();
+   idx.unshift({b:d.b,h:d.h,n:d.n,t:x.text.replace(/\*\*(.+?)\*\*：/g,'$1：').replace(/\s+/g,' ')})}catch(e){}}
+ busy=false;}
 async function runSearch(){const k=q.value.trim();
  const other=HOME||LIST;
  if(!k){r.innerHTML='';if(other)other.style.display='';return}
@@ -555,13 +562,24 @@ async function runSearch(){const k=q.value.trim();
   while((i=t.indexOf(k,i+1))>=0&&hits.length<3){
    hits.push(esc(t.slice(Math.max(0,i-26),i))+'<mark>'+esc(k)+'</mark>'+
              esc(t.slice(i+k.length,i+k.length+34)));}
-  if(hits.length){n++;out.push('<a class="card" href="/d/'+d.b+'.html"><b>'+esc(d.n)+'</b>'+
+  if(hits.length){n++;out.push('<a class="card" href="'+(d.h||'/d/'+d.b+'.html')+'"><b>'+esc(d.n)+'</b>'+
    hits.map(h=>'<div class="hit">…'+h+'…</div>').join('')+'</a>');}}
  r.innerHTML='<div class="sec">命中 '+n+' 篇</div>'+
    (out.join('')||'<div class="empty">没找到</div>');if(typeof hideDel==='function')hideDel();}
 let stm;q.addEventListener('input',()=>{clearTimeout(stm);stm=setTimeout(runSearch,180)});
 '''
 
+
+NEW_JS = r"""
+const DURS=s=>!s?'':s>=3600?Math.floor(s/3600)+'h'+Math.floor(s%3600/60)+'m':Math.floor(s/60)+'m'+(s%60)+'s';
+let NEWV=null;
+async function loadNew(){if(NEWV)return NEWV;
+ try{const j=await (await fetch('/api/cloud?list&_='+Date.now())).json();const have=new Set(ALL.map(d=>d.b));
+  NEWV=(j.docs||[]).filter(d=>!have.has(d.bvid.toLowerCase())).map(d=>({b:d.bvid.toLowerCase(),id:d.bvid,
+   h:'/c.html?bv='+d.bvid,n:d.title,u:d.up,p:d.pub,d:DURS(d.dur),c:d.chars,f:d.mode!=='T',m:d.mode==='M',
+   a:new Date(d.created).toISOString().slice(0,10)}))}catch(e){NEWV=[]}
+ return NEWV}
+"""
 
 EDIT_JS = r"""
 const CPK='zx-cloud-pass';
@@ -626,16 +644,12 @@ async function cgo(mode){
  }catch(e){csay('出错：'+esc(String(e)))}finally{cbtn(false)}
 }
 document.querySelectorAll('.cb').forEach(b=>b.onclick=()=>cgo(b.dataset.m));
-function ctag(d){return d.mode==='M'?'整理稿':(d.from==='mac'?'本机':'云端')+(d.mode==='Y'?'精修':'快车道')}
 async function loadCloud(){
- try{const j=await (await fetch('/api/cloud?list&_='+Date.now())).json();
-  const have=new Set(ALL.map(d=>d.b));
-  const v=(j.docs||[]).filter(d=>!have.has(d.bvid.toLowerCase()));
-  document.getElementById('cloud').innerHTML=v.length?'<h2>新稿<span class="n">还没正式发布，下次发布时并入</span></h2>'+
-   v.map(d=>'<a class="card" href="/c.html?bv='+d.bvid+'"><b>'+esc(d.title)+'</b><span class="meta">'+esc(d.up)+
-   ' · '+esc(d.pub)+(d.dur?' · '+Math.max(1,Math.round(d.dur/60))+' 分':'')+' · '+d.chars+' 字<span class="tag">'+ctag(d)+
-   '</span></span></a>').join(''):'';hideDel();
- }catch(e){}}
+ const v=await loadNew();if(!v.length)return;
+ ALL.unshift(...v);
+ document.getElementById('recent').insertAdjacentHTML('afterbegin',
+  v.map(d=>cardHTML(d).replace('</span></a>',' · 入库 '+d.a+'</span></a>')).join(''));
+ paintAll();}
 function hm(t){const d=new Date(t),p=n=>String(n).padStart(2,'0');return p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())}
 async function loadTasks(){
  try{const j=await (await fetch('/api/cloud?tasks&_='+Date.now())).json();
@@ -700,15 +714,21 @@ const LG=p=>{const c=(p.match(/[一-鿿]/g)||[]).length;return c>0.3*Math.max(1,
  try{const r=await fetch('/api/cloud?doc='+BV+'&_='+Date.now());if(!r.ok)throw new Error(r.status);
   const d=await r.json();document.title=d.title;
   const man=d.mode==='M';
-  const tag=man?'整理稿·未发布':(d.from==='mac'?'本机':'云端')+(d.mode==='Y'?'精修':'快车道·可能有缺失')+(d.from!=='mac'&&d.mode==='Y'?'·未核':'')+'·未发布';
+  const tag=man?'整理稿':d.mode==='T'?'快车道·可能有缺失':'';     // 和正式文稿同一套标签
   const link=man?(d.url?'<a href="'+E(d.url)+'">打开原文</a>':'')+(d.note?'<br>'+E(d.note):'')+(d.source?'<br>'+E(d.source):'')
    :'<a href="https://www.bilibili.com/video/'+BV+'/">在 B站 打开原视频</a>';
   const ps=d.text.split('\n\n').map(p=>p.trim()).filter(Boolean),lg=ps.map(LG),both=lg.includes('en')&&lg.includes('zh');
   box.innerHTML='<h1>'+E(d.title)+'</h1><div class="meta">'+E(d.up)+' · '+E(d.pub)+(d.dur?' · '+DUR(d.dur):'')+' · '+
-   d.chars+' 字<span class="tag">'+tag+'</span><br>'+link+'</div><hr style="border:0;border-top:1px solid var(--line);margin:1.2rem 0">'+
+   d.chars+' 字'+(tag?'<span class="tag">'+tag+'</span>':'')+'<br>'+link+'</div><hr style="border:0;border-top:1px solid var(--line);margin:1.2rem 0">'+
    ps.map((p,i)=>{const m=p.match(/^\*\*(.+?)\*\*：([\s\S]*)$/);
     return m?'<p class="t"><i>'+E(m[1])+'</i>'+E(m[2])+'</p>':'<p'+(both?' class="'+lg[i]+'"':'')+'>'+E(p)+'</p>'}).join('');
   initDocEdit(BV,d.title);
+  // 收藏星：和正式文稿同一套权重（按小写编号记），发布成正式页后接着用
+  const K=BV.toLowerCase(),hd=document.querySelector('header .wrap');
+  hd.insertAdjacentHTML('beforeend','<span class="num rnum"></span><span class="rstar" data-bv="'+K+'">★</span>');
+  const st=hd.querySelector('.rstar'),nm=hd.querySelector('.rnum');
+  function paintW(){const o=W[K]||{},n=nOf(o);st.classList.toggle('on',n>=FAVN);nm.textContent=n?fmt(o):'';nm.className='rnum'+(n>=FAVN?' on':'')}
+  lload();paintW();open1(K);pull().then(paintW);st.onclick=()=>{bump(K,1);paintW()};
  }catch(e){box.innerHTML='<div class="empty">没找到这篇。可能已经并入正式文稿，回首页找。</div>'}})();
 </script>"""
 
