@@ -38,8 +38,9 @@ CSS = """
 @media(prefers-color-scheme:dark){:root{--bg:#16150f;--fg:#e8e4dc;--dim:#918a7e;--line:#2e2a22;
  --card:#1e1c16;--accent:#c9a87c;--star:#e0b45a;--chip:#26231c}}
 *{box-sizing:border-box}
+:root{--fs:19px;--lh:1.95}
 body{margin:0;background:var(--bg);color:var(--fg);
- font:17px/1.85 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB",sans-serif;
+ font:var(--fs)/var(--lh) -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB",sans-serif;
  -webkit-text-size-adjust:100%}
 .wrap{max-width:44rem;margin:0 auto;padding:0 1.1rem 5rem}
 header{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);
@@ -73,6 +74,13 @@ mark{background:#f5d67a;color:#23201c;border-radius:2px}
  border-radius:4px;padding:.05rem .38rem;margin-left:.3rem}
 .foot{display:flex;align-items:center;gap:.5rem;margin-top:.5rem}
 .wt{display:flex;align-items:center;gap:.3rem;flex:none}
+.imp{display:inline-flex;align-items:center;gap:.12rem;flex:none}
+.imp i{display:inline-block;width:1.25rem;height:1.25rem;cursor:pointer;position:relative}
+.imp i::after{content:"";position:absolute;inset:.32rem;border-radius:50%;border:1.6px solid var(--dim);opacity:.55}
+.imp i.on::after{background:var(--star);border-color:var(--star);opacity:1}
+.fsbar{display:flex;gap:.3rem;align-items:center;font-size:.8rem;color:var(--dim);margin:.3rem 0 0}
+.fsbar button{min-width:2.3rem;padding:.2rem .45rem;border:1px solid var(--line);border-radius:7px;
+ background:var(--card);color:var(--fg);font-size:.85rem;cursor:pointer}
 .star{font-size:1.05rem;color:var(--line);cursor:pointer;user-select:none;line-height:1;
  padding:.15rem}
 .star.on{color:var(--star)}
@@ -111,37 +119,35 @@ p.zh{margin:0 0 1.35rem;color:var(--dim)}
 """
 
 WJS = """
-const FAVN=%(favn)d, SLOW=%(slow)s, DS=%(ds)d, DF=%(df)d, OPS=%(ops)d, DAY=864e5;
-const LK='transcribe-w', KEY='%(key)s';
-const OLD=[0,3,6,8,9,9,10,10,10];          // 旧台阶制数据迁移用
+// 重要度：0–5 档（每档 0.2），只由你点圆点设定，不会自己涨、也不会自己掉。
+// 阅读记录（最近一次读 r、读过几次 o）单独记，只用来排「最近在读」，不影响重要度。
+// 多设备合并：重要度看谁改得晚（ti），阅读记录取较新的。旧数据（0–10 档权重）折半迁移。
+const FAVN=2, LK='transcribe-w', KEY='%(key)s', OLD=[0,3,6,8,9,9,10,10,10];
 let W={};
-const nOf=o=>Math.max(0,Math.min(10,o&&o.n!=null?o.n:(o&&o.s!=null?OLD[Math.min(o.s,8)]:0)));
-const wOf=o=>nOf(o)/10;
-const fmt=o=>(nOf(o)/10).toFixed(1);
-const holdDays=n=>SLOW.includes(n)?DS:DF;
-function decay(o){let n=nOf(o),t=o.t||Date.now();
- for(let i=0;i<40&&n>0;i++){const need=holdDays(n)*DAY;
-  if(Date.now()-t<need)break; n--; t+=need;}
- o.n=n;o.t=t;delete o.s;return o;}
-function lload(){try{W=JSON.parse(localStorage.getItem(LK)||'{}')}catch{W={}}
- for(const k in W)decay(W[k]);}
-function lsave(){try{localStorage.setItem(LK,JSON.stringify(W))}catch{}}
-async function pull(){try{const r=await fetch('/api/w?_='+Date.now());const d=await r.json();
- if(d&&d.w)for(const k in d.w){const sv=d.w[k],lo=W[k];
-  if(!lo||(sv.t||0)>=(lo.t||0))W[k]=sv;}}catch{}
- for(const k in W)decay(W[k]);lsave();}
+function lv(o){if(!o)return 0;if(o.i!=null)return Math.max(0,Math.min(5,o.i|0));
+ const n=o.n!=null?o.n:(o.s!=null?OLD[Math.min(o.s,8)]:0);return Math.floor(n/2)}
+const nOf=o=>lv(o)*2, wOf=o=>lv(o)/5, fmt=o=>(lv(o)/5).toFixed(1);
+function norm(o){o.i=lv(o);o.ti=o.ti||o.t||0;delete o.n;delete o.s;return o}
+function lload(){try{W=JSON.parse(localStorage.getItem(LK)||'{}')}catch(e){W={}}for(const k in W)norm(W[k])}
+function lsave(){try{localStorage.setItem(LK,JSON.stringify(W))}catch(e){}}
+async function pull(){try{const d=await (await fetch('/api/w?_='+Date.now())).json();
+ if(d&&d.w)for(const k in d.w){const sv=norm(Object.assign({},d.w[k])),lo=W[k];
+  if(!lo){W[k]=sv;continue}
+  if((sv.ti||0)>(lo.ti||0)){lo.i=sv.i;lo.ti=sv.ti}
+  if((sv.r||0)>(lo.r||0))lo.r=sv.r;lo.o=Math.max(lo.o||0,sv.o||0);lo.t=Math.max(lo.t||0,sv.t||0)}}catch(e){}
+ lsave()}
 let tm=null;
 function push(){if(!KEY)return;clearTimeout(tm);tm=setTimeout(async()=>{
- try{await fetch('/api/w',{method:'POST',
-  headers:{'content-type':'application/json','x-key':KEY},
-  body:JSON.stringify({w:W})});}catch{}},700);}
-function setN(bv,n){const o=W[bv]||(W[bv]={n:0,o:0,t:Date.now()});
- o.n=Math.max(0,Math.min(10,n));o.t=Date.now();lsave();push();return o.n;}
-function bump(bv,d){const o=W[bv]||(W[bv]={n:0,o:0,t:Date.now()});decay(o);
- return setN(bv,nOf(o)+d);}
-function open1(bv){const o=W[bv]||(W[bv]={n:0,o:0,t:Date.now()});decay(o);
- o.o=(o.o||0)+1;if(o.o%%OPS===0)o.n=Math.min(10,nOf(o)+1);
- o.t=Date.now();lsave();push();}
+ try{await fetch('/api/w',{method:'POST',headers:{'content-type':'application/json','x-key':KEY},
+  body:JSON.stringify({w:W})})}catch(e){}},700)}
+function setI(bv,i){const o=W[bv]||(W[bv]={i:0,o:0});o.i=Math.max(0,Math.min(5,i));o.ti=o.t=Date.now();lsave();push();return o.i}
+function bump(bv,d){return setI(bv,lv(W[bv])+d)}
+function open1(bv){const o=W[bv]||(W[bv]={i:0,o:0,ti:0});o.o=(o.o||0)+1;o.r=o.t=Date.now();lsave();push()}
+// 五个圆点：点第 k 个设成 k 档；再点当前那档就清零
+function paintImp(after){document.querySelectorAll('.imp[data-bv]').forEach(e=>{const bv=e.dataset.bv;
+ if(!e.children.length)for(let k=1;k<=5;k++){const d=document.createElement('i');d.dataset.k=k;d.title=(k/5).toFixed(1);e.appendChild(d)}
+ const i=lv(W[bv]);[...e.children].forEach(d=>{d.classList.toggle('on',+d.dataset.k<=i);
+  d.onclick=ev=>{ev.preventDefault();ev.stopPropagation();const k=+d.dataset.k;setI(bv,k===lv(W[bv])?0:k);(after||paintImp)()}})})}
 """
 
 
@@ -198,7 +204,10 @@ def shell(title, inner, nav, script=''):
     return (f'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width,initial-scale=1">'
             f'<meta name="robots" content="noindex,nofollow">'
-            f'<title>{E(title)}</title><style>{CSS}</style></head><body>'
+            f'<title>{E(title)}</title><style>{CSS}</style>'
+            '<script>try{var z=JSON.parse(localStorage.getItem("zx-type")||"{}");'
+            'if(z.fs)document.documentElement.style.setProperty("--fs",z.fs+"px");'
+            'if(z.lh)document.documentElement.style.setProperty("--lh",z.lh)}catch(e){}</script></head><body>'
             f'<header><div class="wrap">{nav}</div></header>'
             f'<div class="wrap">{inner}</div>'
             f'<div class="wrap"><footer>转写库 · {datetime.datetime.now():%Y-%m-%d %H:%M}'
@@ -222,7 +231,7 @@ def card(d, sub=''):
             f'{E(d["chars"])} 字{tag}{sub}</span></a>'
             f'<div class="foot"><span class="wbar"><i data-w="{bv}"></i></span>'
             f'<span class="wt"><span class="num" data-n="{bv}"></span>'
-            f'<span class="star" data-bv="{bv}">★</span></span></div></div>')
+            f'<span class="imp" data-bv="{bv}"></span></span></div></div>')
 
 
 HELP = """<h1>说明</h1>
@@ -267,18 +276,15 @@ HELP = """<h1>说明</h1>
 </table>
 <p>列表里标着「快车道」的就是前者，<b>没标的都是精修稿</b>——随便读，不用自己判断成色。</p>
 
-<h2>2 · 收藏怎么算</h2>
+<h2>2 · 重要度怎么算</h2>
 <table>
-<tr><th>动作</th><th>权重变化</th></tr>
-<tr><td>点一次 ★</td><td>+0.1（上限 1.0）</td></tr>
-<tr><td>打开阅读页 2 次</td><td>+0.1</td></tr>
-<tr><td>「全部」页按 − / ＋</td><td>手动加减 0.1</td></tr>
-<tr><td>闲置：1.0 → 0.9</td><td>−0.1 要 <b>15 天</b></td></tr>
-<tr><td>闲置：0.9 → 0.3</td><td>每档 −0.1 要 3 天</td></tr>
-<tr><td>闲置：0.2 → 0.1</td><td>−0.1 要 <b>15 天</b></td></tr>
-<tr><td>闲置：0.1 → 0.0</td><td>−0.1 要 3 天</td></tr>
+<tr><th>动作</th><th>结果</th></tr>
+<tr><td>点第 k 个圆点</td><td>重要度设为 k × 0.2（一个点 0.2，五个点 1.0）</td></tr>
+<tr><td>再点当前那一档</td><td>清零</td></tr>
+<tr><td>打开、阅读</td><td><b>不改</b>重要度，只记进「最近在读」</td></tr>
+<tr><td>放着不管</td><td><b>不会掉</b>——重要度是你的决定，不该自己变</td></tr>
 </table>
-<p>权重 <b>≥ 0.2 进「我的收藏」</b>；两端粘中间快，所以手滑点一次 3 天自己消失，顶格的要 36 天才掉出去——<b>不用手动取消收藏</b>。</p>
+<p>首页「重要」按重要度从高到低排；「全部」页可以「按重要度」排序。旧的 0–10 档权重已经折半换算过来。各设备之间同步：重要度以最后一次改的为准。</p>
 
 <h2>3 · 其他</h2>
 
@@ -354,15 +360,13 @@ def build():
                 f'</div><hr style="border:0;border-top:1px solid var(--line);margin:1.2rem 0">')
         n = ('<a href="/">首页</a> · <a href="/all.html">全部</a><span class="sp"></span>'
              f'<span class="num rnum"></span>'
-             f'<span class="rstar" data-bv="{d["bv"].lower()}">★</span>')
-        js = (f'<script>{wjs}\nlload();const BV="{d["bv"].lower()}";'
-              'const el=document.querySelector(".rstar");'
+             f'<span class="imp" data-bv="{d["bv"].lower()}"></span>')
+        js = (f'<script>{wjs}\n{TYPE_JS}\nlload();const BV="{d["bv"].lower()}";'
               'const nm=document.querySelector(".rnum");'
-              'function paint(){const o=W[BV]||{};const n=nOf(o);'
-              'el.classList.toggle("on",n>=FAVN);nm.textContent=n?fmt(o):"";'
-              'nm.className="rnum"+(n>=FAVN?" on":"");}'
+              'function paint(){const o=W[BV]||{};const n=nOf(o);paintImp(paint);'
+              'nm.textContent=n?fmt(o):"";nm.className="rnum"+(n>=FAVN?" on":"");}'
               'paint();open1(BV);pull().then(paint);'
-              'el.onclick=()=>{bump(BV,1);paint();};</script>')
+              'typeBar(document.querySelector(".wrap .meta"));</script>')
         edit = (f'<script>{EDIT_JS}\ninitDocEdit({json.dumps(d["bv"])},'
                 f'{json.dumps(d["title"], ensure_ascii=False)});</script>').replace('</', '<\\/').replace('<\\/script>', '</script>')
         (SITE / 'd' / f'{d["bv"].lower()}.html').write_text(
@@ -387,8 +391,9 @@ def build():
              f'<div class="bar"><button class="cb" data-m="T">T 免费</button>'
              f'<button class="cb" data-m="Y">Y 精修</button></div>'
              f'<div id="cs" class="hit"></div><div id="tasks"></div>'
-             f'<h2>★ 我的收藏<span class="n">权重 ≥ 0.2</span></h2>'
-             f'<div id="fav"><div class="empty">还没有。点两次星（权重到 0.2）就会出现在这里。</div></div>'
+             f'<h2>重要<span class="n">你定的重要度，从高到低</span></h2>'
+             f'<div id="fav"></div>'
+             f'<h2>最近在读</h2><div id="reading"></div>'
              f'<h2>最近添加</h2><div id="recent">{recent_html}</div>'
              f'<h2>按 UP 主<span class="n">{len(ups)} 位</span></h2>{uplist}</div>')
     allcards = json.dumps([{'b': d['bv'].lower(), 'n': d['title'], 'u': d['up'], 'p': d['pub'],
@@ -401,21 +406,19 @@ function cardHTML(d){{const tag=d.m?'<span class="tag">整理稿</span>':d.f?'':
   esc(d.u)+' · '+esc(d.p)+(d.d?' · '+esc(d.d):'')+' · '+esc(d.c)+' 字'+tag+
   '</span></a><div class="foot"><span class="wbar"><i data-w="'+d.b+'"></i></span>'+
   '<span class="wt"><span class="num" data-n="'+d.b+'"></span>'+
-  '<span class="star" data-bv="'+d.b+'">★</span></span></div></div>';}}
+  '<span class="imp" data-bv="'+d.b+'"></span></span></div></div>';}}
 function esc(s){{return String(s||'').replace(/[&<>]/g,c=>({{'&':'&amp;','<':'&lt;','>':'&gt;'}}[c]))}}
 function paintAll(){{
- const f=ALL.filter(d=>nOf(W[d.b]||{{}})>=FAVN)
-   .sort((a,b)=>nOf(W[b.b])-nOf(W[a.b]));
+ const f=ALL.filter(d=>lv(W[d.b])>0).sort((a,b)=>lv(W[b.b])-lv(W[a.b])||(W[b.b].ti||0)-(W[a.b].ti||0));
  const box=document.getElementById('fav');
  if(box)box.innerHTML=f.length?f.map(cardHTML).join('')
-   :'<div class="empty">还没有。点两次星（权重到 0.2）就会出现在这里。</div>';
+   :'<div class="empty">还没有。点卡片右下角的圆点给文稿定重要度（一个点 0.2，五个点 1.0），定了就不会自己掉。</div>';
+ const rd=ALL.filter(d=>W[d.b]&&W[d.b].r).sort((a,b)=>W[b.b].r-W[a.b].r).slice(0,5);
+ const rb=document.getElementById('reading');
+ if(rb)rb.innerHTML=rd.length?rd.map(cardHTML).join(''):'<div class="empty">还没读过。</div>';
  bindW();}}
 function bindW(){{
- document.querySelectorAll('.star').forEach(e=>{{
-  const o=W[e.dataset.bv]||{{}};
-  e.classList.toggle('on',nOf(o)>=FAVN);
-  e.onclick=ev=>{{ev.preventDefault();ev.stopPropagation();
-   bump(e.dataset.bv,1);paintAll();}};}});
+ paintImp(paintAll);
  document.querySelectorAll('.num[data-n]').forEach(e=>{{
   const o=W[e.dataset.n]||{{}};const n=nOf(o);
   e.textContent=n?fmt(o):'';e.classList.toggle('on',n>=FAVN);}});
@@ -439,6 +442,7 @@ const _bw=bindW;bindW=function(){{_bw();hideDel()}};loadDel().then(hideDel);
            f'<select id="fq"><option value="">全部质量</option>'
            f'<option value="fine">只看精修</option><option value="fast">只看快车道</option>'
            f'<option value="manual">只看整理稿</option>'
+           f'</select><select id="fs"><option value="">按日期</option><option value="imp">按重要度</option>'
            f'</select></div>')
     inner2 = (f'<h1>全部文稿</h1><div class="meta" id="cnt">{len(docs)} 篇</div>'
               f'<input id="q" placeholder="全文搜索…" autocomplete="off">'
@@ -451,39 +455,30 @@ function cardHTML(d){{const tag=d.m?'<span class="tag">整理稿</span>':d.f?'':
   esc(d.u)+' · '+esc(d.p)+(d.d?' · '+esc(d.d):'')+' · '+esc(d.c)+' 字'+tag+
   '</span></a><div class="foot"><span class="wbar"><i data-w="'+d.b+'"></i></span>'+
   '<span class="wt"><span class="num" data-n="'+d.b+'"></span>'+
-  '<span class="star" data-bv="'+d.b+'">★</span>'+
-  '<span class="stp"><button data-dec="'+d.b+'">−</button>'+
-  '<button data-inc="'+d.b+'">＋</button></span></span></div></div>';}}
+  '<span class="imp" data-bv="'+d.b+'"></span></span></div></div>';}}
 const fu=document.getElementById('fu'),fm=document.getElementById('fm'),
-      fq=document.getElementById('fq'),L=document.getElementById('list'),
+      fq=document.getElementById('fq'),fs=document.getElementById('fs'),L=document.getElementById('list'),
       CN=document.getElementById('cnt');
 function render(){{
  let v=ALL.filter(d=>(!fu.value||d.u===fu.value)&&(!fm.value||(d.p||'').startsWith(fm.value))
    &&(!fq.value||(fq.value==='manual'?d.m:fq.value==='fine'?(d.f&&!d.m):!d.f)));
  v.sort((a,b)=>(b.p||'').localeCompare(a.p||''));
+ if(fs.value==='imp')v.sort((a,b)=>lv(W[b.b])-lv(W[a.b]));
  CN.textContent=v.length+' 篇 · '+v.reduce((s,d)=>s+(+d.c||0),0).toLocaleString()+' 字';
  let out='',cur='';
- for(const d of v){{const m=(d.p||'').slice(0,7)||'未知';
+ for(const d of v){{const m=fs.value==='imp'?['不重要','0.2','0.4','0.6','0.8','1.0'][lv(W[d.b])]:(d.p||'').slice(0,7)||'未知';
   if(m!==cur){{cur=m;out+='<div class="sec">'+m+'</div>';}}
   out+=cardHTML(d);}}
  L.innerHTML=out||'<div class="empty">没有符合条件的文稿</div>';
  bindW();}}
 function bindW(){{
- document.querySelectorAll('.star').forEach(e=>{{
-  const o=W[e.dataset.bv]||{{}};
-  e.classList.toggle('on',nOf(o)>=FAVN);
-  e.onclick=ev=>{{ev.preventDefault();ev.stopPropagation();
-   bump(e.dataset.bv,1);bindW();}};}});
- document.querySelectorAll('[data-inc]').forEach(e=>{{
-  e.onclick=ev=>{{ev.preventDefault();bump(e.dataset.inc,1);bindW();}};}});
- document.querySelectorAll('[data-dec]').forEach(e=>{{
-  e.onclick=ev=>{{ev.preventDefault();bump(e.dataset.dec,-1);bindW();}};}});
+ paintImp(()=>{{if(fs.value==='imp')render();else bindW()}});
  document.querySelectorAll('.num[data-n]').forEach(e=>{{
   const o=W[e.dataset.n]||{{}};const n=nOf(o);
   e.textContent=n?fmt(o):'0.0';e.classList.toggle('on',n>=FAVN);}});
  document.querySelectorAll('[data-w]').forEach(e=>{{
   const o=W[e.dataset.w]||{{}};e.style.width=(wOf(o)*100)+'%';}});}}
-[fu,fm,fq].forEach(e=>e.onchange=render);
+[fu,fm,fq,fs].forEach(e=>e.onchange=render);
 const h=new URLSearchParams(location.hash.slice(1));
 if(h.get('up'))fu.value=h.get('up');
 lload();render();pull().then(render);
@@ -508,7 +503,7 @@ const _bw=bindW;bindW=function(){{_bw();hideDel()}};loadDel().then(hideDel);
     # ── 新转写的阅读页：c.html?bv=…，正文从 /api/cloud 现取；发布成正式页之前用它，样子和正式页一样 ──
     (SITE / 'c.html').write_text(
         shell('文稿', GONE + '<div id="doc"><div class="empty">载入中…</div></div>' + DOC_EDIT, nav(),
-              f'<script>{wjs}\n{EDIT_JS}</script>' + C_JS),
+              f'<script>{wjs}\n{TYPE_JS}\n{EDIT_JS}</script>' + C_JS),
         encoding='utf-8')
 
     # ── 搜索索引与杂项 ──
@@ -569,6 +564,18 @@ async function runSearch(){const k=q.value.trim();
 let stm;q.addEventListener('input',()=>{clearTimeout(stm);stm=setTimeout(runSearch,180)});
 '''
 
+
+TYPE_JS = r"""
+function typeBar(host){
+ let z={};try{z=JSON.parse(localStorage.getItem('zx-type')||'{}')}catch(e){}
+ const R=document.documentElement.style,save=()=>{try{localStorage.setItem('zx-type',JSON.stringify(z))}catch(e){}},
+  ap=()=>{R.setProperty('--fs',(z.fs||19)+'px');R.setProperty('--lh',z.lh||1.95)};
+ host.insertAdjacentHTML('beforeend','<div class="fsbar">字号 <button data-a="-">A−</button><button data-a="+">A＋</button>'+
+  '<button data-a="l">行距</button><button data-a="0">默认</button></div>');
+ host.querySelectorAll('.fsbar button').forEach(b=>b.onclick=()=>{const a=b.dataset.a,f=z.fs||19;
+  if(a==='-')z.fs=Math.max(15,f-1);if(a==='+')z.fs=Math.min(26,f+1);
+  if(a==='l')z.lh=(z.lh||1.95)>=2.2?1.75:+((z.lh||1.95)+0.2).toFixed(2);if(a==='0')z={};ap();save()})}
+"""
 
 NEW_JS = r"""
 const DURS=s=>!s?'':s>=3600?Math.floor(s/3600)+'h'+Math.floor(s%3600/60)+'m':Math.floor(s/60)+'m'+(s%60)+'s';
@@ -725,10 +732,10 @@ const LG=p=>{const c=(p.match(/[一-鿿]/g)||[]).length;return c>0.3*Math.max(1,
   initDocEdit(BV,d.title);
   // 收藏星：和正式文稿同一套权重（按小写编号记），发布成正式页后接着用
   const K=BV.toLowerCase(),hd=document.querySelector('header .wrap');
-  hd.insertAdjacentHTML('beforeend','<span class="num rnum"></span><span class="rstar" data-bv="'+K+'">★</span>');
-  const st=hd.querySelector('.rstar'),nm=hd.querySelector('.rnum');
-  function paintW(){const o=W[K]||{},n=nOf(o);st.classList.toggle('on',n>=FAVN);nm.textContent=n?fmt(o):'';nm.className='rnum'+(n>=FAVN?' on':'')}
-  lload();paintW();open1(K);pull().then(paintW);st.onclick=()=>{bump(K,1);paintW()};
+  hd.insertAdjacentHTML('beforeend','<span class="num rnum"></span><span class="imp" data-bv="'+K+'"></span>');
+  const nm=hd.querySelector('.rnum');
+  function paintW(){const o=W[K]||{},n=nOf(o);paintImp(paintW);nm.textContent=n?fmt(o):'';nm.className='rnum'+(n>=FAVN?' on':'')}
+  lload();paintW();open1(K);pull().then(paintW);typeBar(box.querySelector('.meta'));
  }catch(e){box.innerHTML='<div class="empty">没找到这篇。可能已经并入正式文稿，回首页找。</div>'}})();
 </script>"""
 
