@@ -78,7 +78,26 @@ mark{background:#f5d67a;color:#23201c;border-radius:2px}
 .imp i{display:inline-block;width:1.25rem;height:1.25rem;cursor:pointer;position:relative}
 .imp i::after{content:"";position:absolute;inset:.32rem;border-radius:50%;border:1.6px solid var(--dim);opacity:.55}
 .imp i.on::after{background:var(--star);border-color:var(--star);opacity:1}
-.fsbar{display:flex;gap:.3rem;align-items:center;font-size:.8rem;color:var(--dim);margin:.3rem 0 0}
+:root[data-theme="light"]{--bg:#fbfaf8;--fg:#23201c;--dim:#8a8378;--line:#e6e1d8;--card:#fff;--accent:#7a5c3e;--star:#d9a441;--chip:#f2eee6}
+:root[data-theme="dark"]{--bg:#16150f;--fg:#e8e4dc;--dim:#918a7e;--line:#2e2a22;--card:#1e1c16;--accent:#c9a87c;--star:#e0b45a;--chip:#26231c}
+:root[data-theme="sepia"]{--bg:#f4ecd8;--fg:#3b2f20;--dim:#8b7a5e;--line:#e2d5b8;--card:#f9f2e2;--accent:#8a5a2b;--star:#c8892b;--chip:#ebdfc4}
+:root[data-font="serif"] body{font-family:"Songti SC","STSong","Noto Serif CJK SC",Georgia,serif}
+#prog{position:fixed;top:0;left:0;height:3px;width:0;background:var(--star);z-index:20;transition:width .1s}
+.toast{position:fixed;left:50%;bottom:1.4rem;transform:translateX(-50%);background:var(--card);border:1px solid var(--line);
+ border-radius:10px;padding:.5rem .8rem;font-size:.85rem;box-shadow:0 4px 18px rgba(0,0,0,.18);z-index:30}
+.toast button,.pop button{margin-left:.5rem;border:1px solid var(--line);border-radius:7px;background:var(--chip);color:var(--fg);
+ padding:.2rem .55rem;font-size:.82rem;cursor:pointer}
+mark.hl{background:rgba(217,164,65,.35);color:inherit;border-radius:2px;cursor:pointer}
+mark.hl.note{border-bottom:2px solid var(--star)}
+mark.fd{background:#7fb3ff66;color:inherit}mark.fd.cur{background:#7fb3ff}
+.pop{position:absolute;z-index:40;background:var(--card);border:1px solid var(--line);border-radius:9px;padding:.35rem .4rem;
+ font-size:.85rem;box-shadow:0 4px 18px rgba(0,0,0,.2);max-width:18rem}
+.pop .q{color:var(--dim);font-size:.8rem;margin:.1rem .2rem .3rem}
+.chips{display:flex;gap:.35rem;flex-wrap:wrap;margin:.6rem 0 .2rem}
+.chips button{border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--dim);padding:.15rem .7rem;font-size:.8rem;cursor:pointer}
+.chips button.on{background:var(--chip);color:var(--fg);border-color:var(--dim)}
+.fsbar input{width:7rem;padding:.2rem .45rem;margin:0;font-size:.82rem;border-radius:7px}
+.fsbar{display:flex;gap:.3rem;align-items:center;flex-wrap:wrap;font-size:.8rem;color:var(--dim);margin:.3rem 0 0}
 .fsbar button{min-width:2.3rem;padding:.2rem .45rem;border:1px solid var(--line);border-radius:7px;
  background:var(--card);color:var(--fg);font-size:.85rem;cursor:pointer}
 .star{font-size:1.05rem;color:var(--line);cursor:pointer;user-select:none;line-height:1;
@@ -134,7 +153,8 @@ async function pull(){try{const d=await (await fetch('/api/w?_='+Date.now())).js
  if(d&&d.w)for(const k in d.w){const sv=norm(Object.assign({},d.w[k])),lo=W[k];
   if(!lo){W[k]=sv;continue}
   if((sv.ti||0)>(lo.ti||0)){lo.i=sv.i;lo.ti=sv.ti}
-  if((sv.r||0)>(lo.r||0))lo.r=sv.r;lo.o=Math.max(lo.o||0,sv.o||0);lo.t=Math.max(lo.t||0,sv.t||0)}}catch(e){}
+  if((sv.r||0)>(lo.r||0))lo.r=sv.r;lo.o=Math.max(lo.o||0,sv.o||0);lo.t=Math.max(lo.t||0,sv.t||0);
+  if(sv.hl){const m=new Map((lo.hl||[]).map(h=>[h.q,h]));sv.hl.forEach(h=>{const x=m.get(h.q);if(!x||(h.t||0)>(x.t||0))m.set(h.q,h)});lo.hl=[...m.values()]}}}catch(e){}
  lsave()}
 let tm=null;
 function push(){if(!KEY)return;clearTimeout(tm);tm=setTimeout(async()=>{
@@ -207,7 +227,8 @@ def shell(title, inner, nav, script=''):
             f'<title>{E(title)}</title><style>{CSS}</style>'
             '<script>try{var z=JSON.parse(localStorage.getItem("zx-type")||"{}");'
             'if(z.fs)document.documentElement.style.setProperty("--fs",z.fs+"px");'
-            'if(z.lh)document.documentElement.style.setProperty("--lh",z.lh)}catch(e){}</script></head><body>'
+            'if(z.lh)document.documentElement.style.setProperty("--lh",z.lh);'
+            'if(z.th)document.documentElement.dataset.theme=z.th;if(z.ff)document.documentElement.dataset.font=z.ff}catch(e){}</script></head><body>'
             f'<header><div class="wrap">{nav}</div></header>'
             f'<div class="wrap">{inner}</div>'
             f'<div class="wrap"><footer>转写库 · {datetime.datetime.now():%Y-%m-%d %H:%M}'
@@ -218,7 +239,7 @@ def nav(here=''):
     def it(href, label):
         return f'<b>{label}</b>' if href == here else f'<a href="/{href}">{label}</a>'
     return (it('', '首页') + ' · ' + it('all.html', '全部')
-            + '<span class="sp"></span>' + it('help.html', '说明'))
+            + ' · ' + it('hl.html', '划线') + '<span class="sp"></span>' + it('help.html', '说明'))
 
 
 def card(d, sub=''):
@@ -366,7 +387,8 @@ def build():
               'function paint(){const o=W[BV]||{};const n=nOf(o);paintImp(paint);'
               'nm.textContent=n?fmt(o):"";nm.className="rnum"+(n>=FAVN?" on":"");}'
               'paint();open1(BV);pull().then(paint);'
-              'typeBar(document.querySelector(".wrap .meta"));</script>')
+              'typeBar(document.querySelector(".wrap .meta"));'
+              'initReader(BV,document.querySelectorAll(".wrap")[1]);</script>')
         edit = (f'<script>{EDIT_JS}\ninitDocEdit({json.dumps(d["bv"])},'
                 f'{json.dumps(d["title"], ensure_ascii=False)});</script>').replace('</', '<\\/').replace('<\\/script>', '</script>')
         (SITE / 'd' / f'{d["bv"].lower()}.html').write_text(
@@ -391,7 +413,8 @@ def build():
              f'<div class="bar"><button class="cb" data-m="T">T 免费</button>'
              f'<button class="cb" data-m="Y">Y 精修</button></div>'
              f'<div id="cs" class="hit"></div><div id="tasks"></div>'
-             f'<h2>重要<span class="n">你定的重要度，从高到低</span></h2>'
+             f'<h2>重要<span class="n">你定的重要度，从高到低</span>'
+             f'<a href="#" id="rnd" style="float:right;font-size:.85rem;font-weight:400">随手翻一篇 →</a></h2>'
              f'<div id="fav"></div>'
              f'<h2>最近在读</h2><div id="reading"></div>'
              f'<h2>最近添加</h2><div id="recent">{recent_html}</div>'
@@ -425,6 +448,9 @@ function bindW(){{
  document.querySelectorAll('[data-w]').forEach(e=>{{
   const o=W[e.dataset.w]||{{}};e.style.width=(wOf(o)*100)+'%';}});}}
 lload();paintAll();pull().then(paintAll);
+document.getElementById('rnd').onclick=e=>{{e.preventDefault();
+ const pool=ALL.filter(d=>lv(W[d.b])>=3),src=pool.length?pool:ALL,d=src[Math.floor(Math.random()*src.length)];
+ location.href=d.h||'/d/'+d.b+'.html'}};
 {NEW_JS}
 {EDIT_JS}
 const _bw=bindW;bindW=function(){{_bw();hideDel()}};loadDel().then(hideDel);
@@ -494,6 +520,10 @@ const _bw=bindW;bindW=function(){{_bw();hideDel()}};loadDel().then(hideDel);
     (SITE / 'help.html').write_text(
         shell('说明', HELP.replace('{SYNC}', SYNC_RW if key else SYNC_RO), nav('help.html')),
         encoding='utf-8')
+
+    # ── 划线页：所有划线和笔记，按文稿归组 ──
+    (SITE / 'hl.html').write_text(shell('划线', '<h1>划线与笔记</h1><div class="meta" id="hn"></div><div id="hl"></div>', nav('hl.html'),
+        f'<script>{wjs}</script>' + HL_JS), encoding='utf-8')
 
     # ── 任务页：t.html?id=…，一次转写走到哪一步、成没成、卡在哪、怎么办 ──
     (SITE / 't.html').write_text(
@@ -568,13 +598,82 @@ let stm;q.addEventListener('input',()=>{clearTimeout(stm);stm=setTimeout(runSear
 TYPE_JS = r"""
 function typeBar(host){
  let z={};try{z=JSON.parse(localStorage.getItem('zx-type')||'{}')}catch(e){}
- const R=document.documentElement.style,save=()=>{try{localStorage.setItem('zx-type',JSON.stringify(z))}catch(e){}},
-  ap=()=>{R.setProperty('--fs',(z.fs||19)+'px');R.setProperty('--lh',z.lh||1.95)};
+ const D=document.documentElement,R=D.style,save=()=>{try{localStorage.setItem('zx-type',JSON.stringify(z))}catch(e){}},
+  ap=()=>{R.setProperty('--fs',(z.fs||19)+'px');R.setProperty('--lh',z.lh||1.95);
+   if(z.th)D.dataset.theme=z.th;else delete D.dataset.theme;if(z.ff)D.dataset.font=z.ff;else delete D.dataset.font};
+ const TH=['','light','dark','sepia'],THN={'':'跟随系统',light:'浅色',dark:'深色',sepia:'护眼'};
  host.insertAdjacentHTML('beforeend','<div class="fsbar">字号 <button data-a="-">A−</button><button data-a="+">A＋</button>'+
-  '<button data-a="l">行距</button><button data-a="0">默认</button></div>');
+  '<button data-a="l">行距</button><button data-a="t">主题</button><button data-a="f">字体</button><button data-a="0">默认</button>'+
+  '<input id="fnd" placeholder="文内查找 /" autocomplete="off"><span id="fndn"></span><button data-a="c">复制全文</button></div>');
  host.querySelectorAll('.fsbar button').forEach(b=>b.onclick=()=>{const a=b.dataset.a,f=z.fs||19;
   if(a==='-')z.fs=Math.max(15,f-1);if(a==='+')z.fs=Math.min(26,f+1);
-  if(a==='l')z.lh=(z.lh||1.95)>=2.2?1.75:+((z.lh||1.95)+0.2).toFixed(2);if(a==='0')z={};ap();save()})}
+  if(a==='l')z.lh=(z.lh||1.95)>=2.2?1.75:+((z.lh||1.95)+0.2).toFixed(2);
+  if(a==='t'){z.th=TH[(TH.indexOf(z.th||'')+1)%TH.length];toast('主题：'+THN[z.th])}
+  if(a==='f'){z.ff=z.ff==='serif'?'':'serif';toast(z.ff?'衬线字体':'无衬线字体')}
+  if(a==='0')z={};
+  if(a==='c'){copyAll();return}
+  ap();save()})}
+function toast(h,ms){document.querySelectorAll('.toast').forEach(x=>x.remove());const t=document.createElement('div');
+ t.className='toast';t.innerHTML=h;document.body.appendChild(t);setTimeout(()=>t.remove(),ms||2200);return t}
+function copyAll(){const t=document.querySelector('h1').textContent+'\n\n'+ART().map(p=>p.innerText).join('\n\n');
+ (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('已复制全文'),()=>toast('复制失败，请手动选择'))}
+let ART=()=>[];
+// 阅读器：进度条与续读、阅读时长、按说话人筛选、划线与笔记、文内查找
+function initReader(bv,root){
+ ART=()=>[...root.querySelectorAll('p')].filter(p=>!p.closest('.meta,.card,.ed,.toast,.pop'));
+ const art=ART();
+ const bar=document.createElement('div');bar.id='prog';document.body.appendChild(bar);
+ const PK='zx-pos-'+bv,H=document.documentElement,frac=()=>{const m=H.scrollHeight-H.clientHeight;return m>0?H.scrollTop/m:0};
+ let st=null;addEventListener('scroll',()=>{bar.style.width=(frac()*100)+'%';clearTimeout(st);
+  st=setTimeout(()=>{try{localStorage.setItem(PK,frac().toFixed(4))}catch(e){}},300)},{passive:true});
+ let sv=0;try{sv=+localStorage.getItem(PK)||0}catch(e){}
+ if(sv>0.03&&sv<0.97){const t=toast('上次读到 '+Math.round(sv*100)+'%<button>接着读</button>',9000);
+  t.querySelector('button').onclick=()=>{H.scrollTop=sv*(H.scrollHeight-H.clientHeight);t.remove()}}
+ const n=art.reduce((s,p)=>s+p.textContent.length,0),meta=root.querySelector('.meta');
+ if(meta&&!meta.dataset.rt){meta.dataset.rt=1;meta.insertAdjacentHTML('afterbegin','约 '+Math.max(1,Math.round(n/450))+' 分钟读完 · ')}
+ // 说话人筛选
+ const who=[...new Set(art.filter(p=>p.classList.contains('t')).map(p=>p.querySelector('i').textContent))];
+ if(who.length>=2){const c=document.createElement('div');c.className='chips';
+  c.innerHTML='<button class="on" data-w="">全部</button>'+who.map(w=>'<button data-w="'+w+'">只看'+w+'</button>').join('');
+  art[0].before(c);c.querySelectorAll('button').forEach(b=>b.onclick=()=>{c.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+   const w=b.dataset.w;art.forEach(p=>p.style.display=!w||!p.classList.contains('t')||p.querySelector('i').textContent===w?'':'none')})}
+ // 划线
+ const hls=()=>(W[bv]&&W[bv].hl||[]).filter(h=>!h.del);
+ function wrap(q,cls,attrs){for(const p of art){const tw=document.createTreeWalker(p,NodeFilter.SHOW_TEXT);let nd;
+  while(nd=tw.nextNode()){if(nd.parentNode.closest('mark'))continue;const i=nd.data.indexOf(q);if(i<0)continue;
+   const r=document.createRange();r.setStart(nd,i);r.setEnd(nd,i+q.length);const m=document.createElement('mark');m.className=cls;
+   Object.assign(m.dataset,attrs||{});r.surroundContents(m);return m}}return null}
+ function paintHL(){root.querySelectorAll('mark.hl').forEach(m=>m.replaceWith(...m.childNodes));art.forEach(p=>p.normalize());
+  hls().forEach(h=>wrap(h.q,'hl'+(h.n?' note':''),{q:h.q}))}
+ function saveHL(q,note){const o=W[bv]||(W[bv]={i:0,o:0,ti:0});o.hl=(o.hl||[]).filter(h=>h.q!==q);
+  o.hl.push({q,n:note||'',t:Date.now(),d:document.querySelector('h1').textContent,u:location.pathname+location.search});
+  o.t=Date.now();lsave();push();paintHL()}
+ function delHL(q){const o=W[bv];if(!o)return;o.hl=(o.hl||[]).map(h=>h.q===q?{q,del:1,t:Date.now()}:h);o.t=Date.now();lsave();push();paintHL()}
+ let pop=null;const close=()=>{if(pop){pop.remove();pop=null}};
+ function popAt(rect,html){close();pop=document.createElement('div');pop.className='pop';pop.innerHTML=html;document.body.appendChild(pop);
+  pop.style.top=(scrollY+rect.bottom+8)+'px';pop.style.left=Math.max(8,Math.min(innerWidth-pop.offsetWidth-8,scrollX+rect.left))+'px';return pop}
+ document.addEventListener('mouseup',selCheck);document.addEventListener('touchend',()=>setTimeout(selCheck,30));
+ function selCheck(e){if(e&&e.target&&e.target.closest&&e.target.closest('.pop'))return;
+  const s=getSelection(),q=s.toString().trim();if(!q||q.length<2||q.length>400||!art.some(p=>p.contains(s.anchorNode))){return}
+  const pp=popAt(s.getRangeAt(0).getBoundingClientRect(),'<button data-a="h">划线</button><button data-a="n">划线 + 笔记</button>');
+  pp.onclick=ev=>{const a=ev.target.dataset.a;if(!a)return;const note=a==='n'?(prompt('笔记（可空）','')||''):'';
+   saveHL(q,note);s.removeAllRanges();close();toast(note?'已划线并记笔记':'已划线')}}
+ root.addEventListener('click',e=>{const m=e.target.closest('mark.hl');if(!m)return;const h=hls().find(x=>x.q===m.dataset.q);if(!h)return;
+  const pp=popAt(m.getBoundingClientRect(),(h.n?'<div class="q">'+h.n.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+'</div>':'')+
+   '<button data-a="e">'+(h.n?'改笔记':'加笔记')+'</button><button data-a="d">删除划线</button>');
+  pp.onclick=ev=>{const a=ev.target.dataset.a;if(a==='d'){delHL(h.q);close()}if(a==='e'){const v=prompt('笔记',h.n||'');if(v!==null)saveHL(h.q,v);close()}}});
+ document.addEventListener('mousedown',e=>{if(pop&&!e.target.closest('.pop'))close()});
+ paintHL();
+ // 文内查找
+ const fi=document.getElementById('fnd'),fn=document.getElementById('fndn');let hits=[],cur=-1;
+ if(fi){const clear=()=>{root.querySelectorAll('mark.fd').forEach(m=>m.replaceWith(...m.childNodes));art.forEach(p=>p.normalize());hits=[];cur=-1};
+  fi.oninput=()=>{clear();const q=fi.value.trim();if(q.length<1){fn.textContent='';return}
+   for(let k=0;k<500;k++){const m=wrap(q,'fd');if(!m)break;hits.push(m)}fn.textContent=hits.length?hits.length+' 处':'没有';if(hits.length)go(0)};
+  const go=i=>{if(!hits.length)return;hits.forEach(m=>m.classList.remove('cur'));cur=(i+hits.length)%hits.length;hits[cur].classList.add('cur');
+   hits[cur].scrollIntoView({block:'center'});fn.textContent=(cur+1)+'/'+hits.length};
+  fi.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();go(cur+(e.shiftKey?-1:1))}if(e.key==='Escape'){fi.value='';clear();fn.textContent='';fi.blur()}};
+  document.addEventListener('keydown',e=>{if(e.key==='/'&&document.activeElement!==fi&&!/INPUT|TEXTAREA/.test(document.activeElement.tagName)){e.preventDefault();fi.focus()}})}
+ pull().then(paintHL)}
 """
 
 NEW_JS = r"""
@@ -671,6 +770,18 @@ async function loadTasks(){
 loadCloud();loadTasks();
 """
 
+HL_JS = r"""<script>
+const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function draw(){const g=[];for(const k in W){const hs=(W[k].hl||[]).filter(h=>!h.del);if(hs.length)g.push([k,hs])}
+ g.sort((a,b)=>Math.max(...b[1].map(h=>h.t))-Math.max(...a[1].map(h=>h.t)));
+ document.getElementById('hn').textContent=g.reduce((s,x)=>s+x[1].length,0)+' 条划线 · '+g.length+' 篇文稿';
+ document.getElementById('hl').innerHTML=g.length?g.map(([k,hs])=>'<h2><a href="'+E(hs[0].u||'/d/'+k+'.html')+'">'+E(hs[0].d||k)+'</a></h2>'+
+  hs.sort((a,b)=>b.t-a.t).map(h=>'<div class="card"><b style="font-weight:400">'+E(h.q)+'</b>'+(h.n?'<span class="meta">笔记：'+E(h.n)+'</span>':'')+'</div>').join('')).join('')
+  :'<div class="empty">还没有划线。在阅读页选中一段文字，点「划线」。</div>'}
+lload();draw();pull().then(draw);
+</script>"""
+
+
 T_JS = r"""<script>
 const ID=new URLSearchParams(location.search).get('id')||'';
 const E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -735,7 +846,7 @@ const LG=p=>{const c=(p.match(/[一-鿿]/g)||[]).length;return c>0.3*Math.max(1,
   hd.insertAdjacentHTML('beforeend','<span class="num rnum"></span><span class="imp" data-bv="'+K+'"></span>');
   const nm=hd.querySelector('.rnum');
   function paintW(){const o=W[K]||{},n=nOf(o);paintImp(paintW);nm.textContent=n?fmt(o):'';nm.className='rnum'+(n>=FAVN?' on':'')}
-  lload();paintW();open1(K);pull().then(paintW);typeBar(box.querySelector('.meta'));
+  lload();paintW();open1(K);pull().then(paintW);typeBar(box.querySelector('.meta'));initReader(K,box);
  }catch(e){box.innerHTML='<div class="empty">没找到这篇。可能已经并入正式文稿，回首页找。</div>'}})();
 </script>"""
 
