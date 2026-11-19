@@ -138,13 +138,10 @@ else
   python3 $S/mkservice.py $ROOT text 转写-精修 "nohup \"$ROOT/src/hotkey.sh\" fine >/dev/null 2>&1 &" >/dev/null || die "生成服务失败"
   python3 $S/mkservice.py $ROOT files 同步到转写库 "${P}nohup \"$ROOT/src/upload.py\" \"\$@\" >/dev/null 2>&1 &" >/dev/null \
     || die "生成服务失败"
-  for name key in 转写-免费 '@^t' 转写-精修 '@^y' 同步到转写库 '@^u'; do
-    # 键名外面那层双引号不能省：不加的话 (null) 会被当成数组
-    defaults write pbs NSServicesStatus -dict-add "\"(null) - $name - runWorkflowAsService\"" "{key_equivalent = \"$key\";}"
-  done
   /System/Library/CoreServices/pbs -update
-  (( $(/System/Library/CoreServices/pbs -dump 2>/dev/null | grep -c 'U8f6c\\U5199-\|U540c\\U6b65\\U5230') >= 5 )) || die "系统没认到这三个服务"
-  ok "三个服务已注册并绑好键（⌃⌘U：在访达里选中整理好的文稿再按，或右键 → 快速操作 → 同步到转写库）"
+  # 快捷键不挂在服务上：系统的服务运行器会卡住不跑脚本。改由常驻的热键守护进程接管（服务留着当右键菜单）
+  zsh $S/hotkeyd.sh $ROOT >/dev/null || die "热键守护进程没装上（看 ~/Library/Logs/转写热键.log）"
+  ok "热键已接管：⌃⌘T / ⌃⌘Y 读剪贴板；⌃⌘U 同步访达里选中的整理稿（也可右键 → 快速操作 → 同步到转写库）"
 fi
 
 step "8/8 自检（真跑 T、Y 两条链路的关键环节，约 30 秒，花费约 0.001 元）"

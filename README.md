@@ -30,12 +30,12 @@ zsh -c "$(curl -fsSL https://raw.githubusercontent.com/bobsybrashin/bili-transcr
 
 | # | 限制 | 说明 |
 |---|---|---|
-| 1 | 只支持 macOS | 热键靠 macOS 的「服务」；需要能输开机密码的账户（装 Homebrew 时用） |
+| 1 | 只支持 macOS | 热键靠常驻的小守护进程（`src/hotkeyd.swift`，需 Xcode 命令行工具）；需要能输开机密码的账户（装 Homebrew 时用） |
 | 2 | Chrome 里要已登录 bilibili.com | B站 登录态从 Chrome 取；约一个月过期，跑 `setup/refresh-cookie.sh` 续上（云端同步更新） |
 | 3 | Netlify 账号要拥有 `zhuanxieku` 站点 | 这套只服务这一个站；别的账号/新站点不在本次范围 |
 | 4 | 豆包语音要已开通「录音文件识别 2.0」 | API Key 取自火山引擎**新版**控制台；旧版的 App ID 用不了 |
 | 5 | 过程中有系统弹窗要人点 | Netlify 授权、钥匙串（输开机密码 + 始终允许）、首次通知权限 |
-| 6 | 热键在少数应用里不生效 | Electron 类应用（如 Claude 桌面版）里按没反应；在 Chrome、访达里按 |
+| 6 | 第一次按热键可能弹「允许访问文稿文件夹」 | 点允许，只问一次；按了没反应先看 `~/Library/Logs/转写热键.log` |
 | 7 | 免费路线（T）要视频自带中文字幕 | 没有字幕就只能精修（Y） |
 | 8 | 云端 Y 有上限 | 单条 ≤ 2 小时；没有热词表、不做双源核对，标「云端精修·未核」 |
 | 9 | Netlify 免费额度 300/月，硬上限 | 每次正式部署 15；超了站点暂停到下月。出稿不花额度，只有发布花 |
@@ -356,7 +356,7 @@ src/fetch.py            取源抽象层 —— 换视频来源只改这一个文
 src/ts.py               CLI 入口
 src/publish.py          生成静态站（默认只构建）
 src/doctor.py           对账：找失败残骸和不一致
-src/hotkey.sh           macOS 热键入口
+src/hotkey.sh           macOS 热键入口（由 src/hotkeyd.swift 守护进程调用；setup/hotkeyd.sh 安装）
 netlify/functions/w.mjs 收藏权重同步（GET 公开读，POST 校验密钥）
 tables/                 热词表与替换表，唯一的长期资产
 ```

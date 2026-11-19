@@ -276,7 +276,7 @@ HELP = """<h1>说明</h1>
 <tr><td>3</td><td>Netlify 账号要拥有 zhuanxieku 站点</td></tr>
 <tr><td>4</td><td>豆包语音要开通「录音文件识别 2.0」，API Key 用新版控制台的</td></tr>
 <tr><td>5</td><td>过程中要人点：Netlify 授权、钥匙串「始终允许」、首次通知权限</td></tr>
-<tr><td>6</td><td>热键在 Electron 类应用（如 Claude 桌面版）里不生效，在 Chrome、访达里按</td></tr>
+<tr><td>6</td><td>第一次按热键可能弹「允许访问文稿文件夹」，点允许即可；按了没反应看 ~/Library/Logs/转写热键.log</td></tr>
 <tr><td>7</td><td>免费路线要视频自带中文字幕</td></tr>
 <tr><td>8</td><td>云端精修单条 ≤ 2 小时，没有热词表和双源核对</td></tr>
 <tr><td>9</td><td>Netlify 免费额度 300/月硬上限，每次部署 15；出稿不花，发布才花</td></tr>
